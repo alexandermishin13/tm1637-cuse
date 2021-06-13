@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <syslog.h>
 #include <err.h>
+#include <errno.h>
 #include <sysexits.h>
 
 #include <libgpio.h>
@@ -42,6 +43,16 @@
     __VA_ARGS__);				\
     exit(code);					\
 } while (0)
+
+#define CDEV_UID			0
+#define CDEV_GID			0
+#define CDEV_MODE			666
+
+#define	UNIT_MAX			1
+#define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
+
+struct pidfh *pfh;
+static char *pid_file = NULL;
 
 /* tm1637_dev device struct */
 struct tm1637_dev_t {
@@ -99,12 +110,77 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
     return (0);
 }
 
+static void
+tm1637_exit(void)
+{
+    if (pfh != NULL) {
+	pidfile_remove(pfh);
+	pfh = NULL;
+    }
+    closelog();
+}
+
+/* Daemonize wrapper */
+static void
+daemonize(void)
+{
+    pid_t otherpid;
+
+    /* Try to create a pidfile */
+    pfh = pidfile_open(pid_file, 0600, &otherpid);
+    if (pfh == NULL) {
+	if (errno == EEXIST)
+	    tm1637_errx (EXIT_FAILURE, "Daemon already running, pid: %jd.", (intmax_t)otherpid);
+
+	/* If we cannot create pidfile from other reasons, only warn. */
+	warn ("Cannot open or create pidfile");
+	/*
+	* Even though pfh is NULL we can continue, as the other pidfile_*
+	* function can handle such situation by doing nothing except setting
+	* errno to EDOOFUS.
+	*/
+    }
+
+    /* Try to demonize the process */
+    if (daemon(0, 0) == -1) {
+	pidfile_remove(pfh);
+	tm1637_errx (EXIT_FAILURE, "Cannot daemonize");
+    }
+
+    pidfile_write(pfh);
+}
+
 int
 main(int argc, char **argv)
 {
+    int id;
+    unsigned int n;
+    int unit_num[UNIT_MAX] = { -1 };
+    struct cuse_dev *pdev;
+
+    openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
+
     if (cuse_init() != 0) {
 	tm1637_errx(EX_USAGE, "Could not open /dev/cuse. Did you kldload cuse4bsd?");
     }
+
+    n = 0;
+    if (unit_num[id] < 0) {
+	if (cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) != 0)
+	    tm1637_errx(1, "Cannot allocate uniq unit number");
+    }
+
+again:
+    pdev = cuse_dev_create(&tm1637_cuse_methods, (void *)(long)n,
+	0, CDEV_UID, CDEV_GID, CDEV_MODE, "%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
+
+    /*
+     * Resolve device naming conflict with new
+     * kernel evdev module:
+     */
+    if (pdev == NULL &&
+	cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) == 0)
+	    goto again;
 
     for(;;) {
 	tm1637_work(NULL);
