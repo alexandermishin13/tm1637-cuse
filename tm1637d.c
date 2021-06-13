@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <signal.h>
 #include <syslog.h>
 #include <err.h>
@@ -51,6 +52,13 @@
 
 #define	UNIT_MAX			1
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
+#define ACK_TIMEOUT			200
+
+#define ADDR_AUTO			0x40
+#define ADDR_FIXED			0x44
+#define ADDR_START			0xc0
+#define DISPLAY_OFF			0x80
+#define DISPLAY_CTRL			0x88
 
 #define MAX_DIGITS			4
 #define MAX_CHARS			MAX_DIGITS+1
@@ -58,21 +66,33 @@
 #define CHR_SPACE			0x00
 #define CHR_HYPHEN			0x40
 
+#define DARKEST				0
+#define BRIGHT_TYPICAL			2
+#define BRIGHTEST			7
+
 struct pidfh *pfh;
 static char *pid_file = NULL;
+static char *gpio_device = "/dev/gpioc0";
+gpio_handle_t gpio_handle;
 static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
 
 /* tm1637_dev device struct */
 struct tm1637_dev_t {
-    uint8_t	 codes[MAX_DIGITS];
-    char	 digits[MAX_DIGITS];
-    char	 buf_text[MAX_CHARS];
-    size_t	 buf_len;
+    gpio_pin_t		 sclpin;
+    gpio_pin_t		 sdapin;
+    uint8_t		 codes[MAX_DIGITS];
+    char		 digits[MAX_DIGITS];
+    char		 buf_text[MAX_CHARS];
+    size_t		 buf_len;
 };
 
 static int tm1637_cuse_open(struct cuse_dev *, int);
 static int tm1637_cuse_close(struct cuse_dev *, int);
 static int tm1637_cuse_write(struct cuse_dev *, int, const void *, int);
+
+static void bb_send_start(struct tm1637_dev_t *);
+static void bb_send_stop(struct tm1637_dev_t *);
+static void bb_send_byte(struct tm1637_dev_t *, uint8_t);
 
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
@@ -139,11 +159,63 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 static void
 tm1637_exit(void)
 {
-    if (pfh != NULL) {
+    gpio_close(gpio_handle);
+
+    if (pfh != NULL)
 	pidfile_remove(pfh);
-	pfh = NULL;
-    }
+
     closelog();
+}
+
+/*
+ * Sends a signal to tm1637 to start a transmition a byte
+ */
+static void
+bb_send_start(struct tm1637_dev_t *tmd)
+{
+    gpio_pin_high(gpio_handle, tmd->sclpin);
+    gpio_pin_high(gpio_handle, tmd->sdapin); 
+    gpio_pin_low(gpio_handle, tmd->sdapin); 
+    gpio_pin_low(gpio_handle, tmd->sclpin); 
+} 
+
+/*
+ * Sends a signal to tm1637 to stop a transmition a byte
+ */
+static void
+bb_send_stop(struct tm1637_dev_t *tmd)
+{
+    gpio_pin_low(gpio_handle, tmd->sdapin);
+    gpio_pin_low(gpio_handle, tmd->sclpin);
+    gpio_pin_high(gpio_handle, tmd->sclpin);
+    gpio_pin_high(gpio_handle, tmd->sdapin); 
+}
+
+static void
+bb_send_byte(struct tm1637_dev_t *tmd, uint8_t data)
+{
+    int i = 0, k = 0;
+
+    /* Sent 8bit data */
+    do {
+	/* Set the data bit, CLK is low after start */
+	gpio_pin_set(gpio_handle, tmd->sdapin, (gpio_value_t)(data&(0x01<<i))); //LSB first
+	/* The data bit is ready */
+	gpio_pin_high(gpio_handle, tmd->sclpin);
+	gpio_pin_low(gpio_handle, tmd->sclpin);
+    } while (++i < 7);
+    /* Wait for the ACK */
+    gpio_pin_input(gpio_handle, tmd->sdapin);
+    gpio_pin_high(gpio_handle, tmd->sclpin);
+
+    do {
+	if (k++<ACK_TIMEOUT)
+	    break;
+	usleep(1);
+    } while (gpio_pin_get(gpio_handle, tmd->sdapin));
+
+    gpio_pin_low(gpio_handle, tmd->sclpin);
+    gpio_pin_output(gpio_handle, tmd->sdapin);
 }
 
 /* Daemonize wrapper */
@@ -222,6 +294,10 @@ main(int argc, char **argv)
     if (cuse_init() != 0) {
 	tm1637_errx(EX_USAGE, "Could not open /dev/cuse. Did you kldload cuse4bsd?");
     }
+
+    gpio_handle = gpio_open_device(gpio_device);
+    if (gpio_handle == GPIO_INVALID_HANDLE)
+	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
     tm1637_create();
 
