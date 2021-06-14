@@ -81,7 +81,6 @@ struct tm1637_buf_t {
     char			 text[MAX_CHARS];
     size_t			 length;
     uint8_t			 codes[MAX_DIGITS];
-    char			 digits[MAX_DIGITS];
     bool			 marks[MAX_DIGITS];
 };
 
@@ -90,6 +89,8 @@ struct tm1637_dev_t {
     gpio_pin_t			 sclpin;
     gpio_pin_t			 sdapin;
     struct tm1637_buf_t		*buffer;
+    uint8_t			 brightness;
+    bool			 on;
 };
 
 static int tm1637_cuse_open(struct cuse_dev *, int);
@@ -102,6 +103,14 @@ static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
 
 static int digit_convert(struct tm1637_buf_t *, const char, const int);
 static int buffer_convert(struct tm1637_buf_t *);
+
+static void display_on(struct tm1637_dev_t *);
+static void display_off(struct tm1637_dev_t *);
+static void display_blank(struct tm1637_dev_t *);
+
+static void bb_send_command(struct tm1637_dev_t *, const uint8_t);
+static void bb_send_data1(struct tm1637_dev_t *, const size_t);
+static void bb_send_data(struct tm1637_dev_t *, size_t, const size_t);
 
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
@@ -179,6 +188,7 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (error);
 
     if (buffer_convert(buf) == 0) {
+	bb_send_data(tmd, 0, MAX_DIGITS);
 	printf("%.*s\n", buf->length, buf->text);
 	return (len);
     }
@@ -203,7 +213,7 @@ digit_convert(struct tm1637_buf_t *buf, const char c, const int p)
 	break; // skip a digit position
     default:
 	if ((c >= '0') && (c <= '9'))
-	buf->codes[p] = c&0x0f;
+	buf->codes[p] = char_code[c&0x0f];
     }
 
     return (0);
@@ -285,7 +295,7 @@ bb_send_byte(struct tm1637_dev_t *tmd, const uint8_t data)
 	/* The data bit is ready */
 	gpio_pin_high(gpio_handle, tmd->sclpin);
 	gpio_pin_low(gpio_handle, tmd->sclpin);
-    } while (++i < 7);
+    } while (++i <= 7);
     /* Wait for the ACK */
     gpio_pin_input(gpio_handle, tmd->sdapin);
     gpio_pin_high(gpio_handle, tmd->sclpin);
@@ -298,6 +308,91 @@ bb_send_byte(struct tm1637_dev_t *tmd, const uint8_t data)
 
     gpio_pin_low(gpio_handle, tmd->sclpin);
     gpio_pin_output(gpio_handle, tmd->sdapin);
+}
+
+/*
+ * Writes all blanks to a display
+ */
+static void
+display_blank(struct tm1637_dev_t *tmd)
+{
+    size_t position = MAX_DIGITS;
+
+    // Display all blanks
+    while(--position)
+	tmd->buffer->codes[position] = CHR_SPACE;
+
+    bb_send_data(tmd, 0, MAX_DIGITS);
+}
+
+/* Off the display */
+static void
+display_off(struct tm1637_dev_t *tmd)
+{
+  bb_send_command(tmd, DISPLAY_OFF);
+
+  tmd->on = false; // display is off
+}
+
+/* On the diplay with current brightness */
+static void
+display_on(struct tm1637_dev_t *tmd)
+{
+  bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
+
+  tmd->on = true; // display is off
+}
+
+/*
+ * Sends one byte command with a retry if no acnowledge occurs
+ * Returns zero on success
+ */
+static void
+bb_send_command(struct tm1637_dev_t *tmd, const uint8_t cmd)
+{
+    bb_send_start(tmd);
+    bb_send_byte(tmd, cmd);
+    bb_send_stop(tmd);
+}
+
+/*
+ * Sends an address and one byte data to it with a retry if no acknowleges occurs
+ * Returns zero on success
+ */
+static void
+bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
+{
+    uint8_t addr = ADDR_START + pos;
+    uint8_t data = tmd->buffer->codes[pos];
+
+    bb_send_command(tmd, ADDR_FIXED);
+
+    bb_send_start(tmd);
+    bb_send_byte(tmd, addr);
+    bb_send_byte(tmd, data);
+    bb_send_stop(tmd);
+}
+
+/*
+ * Send number of bytes fron first to last address
+ * Changed pos parameter can be used for sending rest of data on error
+ * 
+ */
+static void
+bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
+{
+    uint8_t addr = ADDR_START + pos;
+
+    bb_send_command(tmd, ADDR_AUTO);
+
+    bb_send_start(tmd);
+    bb_send_byte(tmd, addr);
+
+    do {
+	bb_send_byte(tmd, tmd->buffer->codes[pos]);
+    } while(++pos < stop);
+
+    bb_send_stop(tmd);
 }
 
 /* Daemonize wrapper */
@@ -358,6 +453,15 @@ again:
 		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
 
 	    tmd->buffer = buf;
+	    tmd->brightness = BRIGHT_TYPICAL;
+	    tmd->sclpin = 26;
+	    tmd->sdapin = 29;
+
+	    gpio_pin_output(gpio_handle, tmd->sdapin);
+	    gpio_pin_output(gpio_handle, tmd->sclpin);
+
+	    display_blank(tmd);
+	    display_on(tmd);
 
 	    /*
 	     * Resolve device naming conflict with new
