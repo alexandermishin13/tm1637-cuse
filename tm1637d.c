@@ -90,12 +90,15 @@ struct tm1637_buf_t {
 struct tm1637_dev_t {
     gpio_pin_t			 sclpin;
     gpio_pin_t			 sdapin;
-    struct tm1637_buf_t		*buffer;
+    struct tm1637_buf_t		 buffer;
     uint8_t			 brightness;
     bool			 on;
 
     SLIST_ENTRY(tm1637_dev_t)	 next;
 };
+
+SLIST_HEAD(tm1637_list, tm1637_dev_t) tm1637_head = SLIST_HEAD_INITIALIZER(tm1637_head);;
+struct tm1637_list *tm1637_head_p;
 
 static int tm1637_cuse_open(struct cuse_dev *, int);
 static int tm1637_cuse_close(struct cuse_dev *, int);
@@ -126,6 +129,18 @@ static struct cuse_methods tm1637_cuse_methods = {
 static void
 tm1637_termination(int signum)
 {
+    /* Free allocated memory blocks */
+    while (!SLIST_EMPTY(&tm1637_head)) {
+        /* List Deletion. */
+	struct tm1637_dev_t *tmd = SLIST_FIRST(&tm1637_head);
+
+	display_blank(tmd);
+	display_off(tmd);
+
+	SLIST_REMOVE_HEAD(&tm1637_head, next);
+	free(tmd);
+    }
+
     /* Close the gpio controller connection */
     gpio_close(gpio_handle);
 
@@ -183,7 +198,7 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (CUSE_ERR_INVALID);
 
 //    TM1637_UNLOCK(ec);
-    struct tm1637_buf_t *buf = tmd->buffer;
+    struct tm1637_buf_t *buf = &tmd->buffer;
     error = cuse_copy_in(peer_ptr, buf->text, len);
     buf->length = len;
 //    TM1637_LOCK(ec);
@@ -324,7 +339,7 @@ display_blank(struct tm1637_dev_t *tmd)
 
     // Display all blanks
     while(--position)
-	tmd->buffer->codes[position] = CHR_SPACE;
+	tmd->buffer.codes[position] = CHR_SPACE;
 
     bb_send_data(tmd, 0, MAX_DIGITS);
 }
@@ -367,7 +382,7 @@ static void
 bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
 {
     uint8_t addr = ADDR_START + pos;
-    uint8_t data = tmd->buffer->codes[pos];
+    uint8_t data = tmd->buffer.codes[pos];
 
     bb_send_command(tmd, ADDR_FIXED);
 
@@ -393,7 +408,7 @@ bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
     bb_send_byte(tmd, addr);
 
     do {
-	bb_send_byte(tmd, tmd->buffer->codes[pos]);
+	bb_send_byte(tmd, tmd->buffer.codes[pos]);
     } while(++pos < stop);
 
     bb_send_stop(tmd);
@@ -433,9 +448,12 @@ static struct tm1637_dev_t *
 tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 {
     struct tm1637_dev_t *node = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
+
     node->brightness = brightness;
     node->sclpin = sclpin;
     node->sdapin = sdapin;
+
+    return (node);
 }
 
 static void
@@ -451,9 +469,9 @@ tm1637_list_create(void)
 
     for (n = 0; n < UNIT_MAX; n++) {
 
-	if (((tmd = malloc(sizeof(*tmd))) != NULL) &&
-	    ((buf = malloc(sizeof(*buf))) != NULL))
+	if ((tmd = tm1637_create(BRIGHT_TYPICAL, 26, 29)) != NULL)
 	{
+	    SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
 
 	    if (unit_num[id] < 0) {
 		if (cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) != 0)
@@ -464,11 +482,6 @@ again:
 	    pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
 		CDEV_UID, CDEV_GID, CDEV_MODE,
 		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
-
-	    tmd->buffer = buf;
-	    tmd->brightness = BRIGHT_TYPICAL;
-	    tmd->sclpin = 26;
-	    tmd->sdapin = 29;
 
 	    gpio_pin_output(gpio_handle, tmd->sdapin);
 	    gpio_pin_output(gpio_handle, tmd->sclpin);
@@ -493,8 +506,6 @@ int
 main(int argc, char **argv)
 {
     struct tm1637_dev_t *node;
-    LIST_HEAD(tm1637_list, tm1637_dev_t) *tm1637_head;
-    LIST_INIT(tm1637_head);
 
     openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
