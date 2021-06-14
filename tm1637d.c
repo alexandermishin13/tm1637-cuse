@@ -64,7 +64,7 @@
 #define MAX_CHARS			MAX_DIGITS+1
 
 #define CHR_SPACE			0x00
-#define CHR_HYPHEN			0x40
+#define CHR_GYPHEN			0x40
 
 #define DARKEST				0
 #define BRIGHT_TYPICAL			2
@@ -76,14 +76,20 @@ static char *gpio_device = "/dev/gpioc0";
 gpio_handle_t gpio_handle;
 static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
 
+/* Buffer struct */
+struct tm1637_buf_t {
+    char			 text[MAX_CHARS];
+    size_t			 length;
+    uint8_t			 codes[MAX_DIGITS];
+    char			 digits[MAX_DIGITS];
+    bool			 marks[MAX_DIGITS];
+};
+
 /* tm1637_dev device struct */
 struct tm1637_dev_t {
-    gpio_pin_t		 sclpin;
-    gpio_pin_t		 sdapin;
-    uint8_t		 codes[MAX_DIGITS];
-    char		 digits[MAX_DIGITS];
-    char		 buf_text[MAX_CHARS];
-    size_t		 buf_len;
+    gpio_pin_t			 sclpin;
+    gpio_pin_t			 sdapin;
+    struct tm1637_buf_t		*buffer;
 };
 
 static int tm1637_cuse_open(struct cuse_dev *, int);
@@ -92,7 +98,10 @@ static int tm1637_cuse_write(struct cuse_dev *, int, const void *, int);
 
 static void bb_send_start(struct tm1637_dev_t *);
 static void bb_send_stop(struct tm1637_dev_t *);
-static void bb_send_byte(struct tm1637_dev_t *, uint8_t);
+static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
+
+static int digit_convert(struct tm1637_buf_t *, const char, const int);
+static int buffer_convert(struct tm1637_buf_t *);
 
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
@@ -100,8 +109,25 @@ static struct cuse_methods tm1637_cuse_methods = {
     .cm_write = tm1637_cuse_write
 };
 
+/* Signals handler. Prepare the programm for end */
 static void
-tm1637_work_exec_hup(int dummy)
+tm1637_termination(int signum)
+{
+    /* Close the gpio controller connection */
+    gpio_close(gpio_handle);
+
+    /* Remove pidfile and exit */
+    if (pfh != NULL)
+	pidfile_remove(pfh);
+
+    /* Close the logging */
+    closelog();
+
+    exit(EXIT_SUCCESS);
+}
+
+static void
+tm1637_work_exec_hup(int signum)
 {
 
 }
@@ -144,27 +170,83 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (CUSE_ERR_INVALID);
 
 //    TM1637_UNLOCK(ec);
-    error = cuse_copy_in(peer_ptr, tmd->buf_text, len);
-    tmd->buf_len = len;
+    struct tm1637_buf_t *buf = tmd->buffer;
+    error = cuse_copy_in(peer_ptr, buf->text, len);
+    buf->length = len;
 //    TM1637_LOCK(ec);
 
     if (error)
 	return (error);
 
-    printf("%.*s\n", tmd->buf_len, tmd->buf_text);
+    if (buffer_convert(buf) == 0) {
+	printf("%.*s\n", buf->length, buf->text);
+	return (len);
+    }
 
-    return (len);
+    return (CUSE_ERR_INVALID);
 }
 
-static void
-tm1637_exit(void)
+static int
+digit_convert(struct tm1637_buf_t *buf, const char c, const int p)
 {
-    gpio_close(gpio_handle);
+    switch (c) {
+    case ' ':
+	buf->codes[p] = CHR_SPACE;
+	break;
+    case '-':
+	buf->codes[p] = CHR_GYPHEN;
+	break;
+    case ':':
+	return (-1);
+	//break;
+    case '#':
+	break; // skip a digit position
+    default:
+	if ((c >= '0') && (c <= '9'))
+	buf->codes[p] = c&0x0f;
+    }
 
-    if (pfh != NULL)
-	pidfile_remove(pfh);
+    return (0);
+}
 
-    closelog();
+/* Convert the date written to device */
+static int
+buffer_convert(struct tm1637_buf_t *buf)
+{
+    int i, p;
+
+    if (buf->length == 5) {
+	i = 0;
+	p = 0;
+
+	do {
+	    if (i == 2) {
+		char c = buf->text[i++];
+
+		if (c == ':')
+		    buf->codes[1] |= 0x80;
+		else
+		if (c != ' ')
+		    return (-1);
+	    }
+
+	    if (digit_convert(buf, buf->text[i++], p))
+		return (-1);
+	} while (++p < MAX_DIGITS);
+    }
+    else {
+	i = buf->length;
+	p = MAX_DIGITS;
+
+	if (i <= 0)
+	    return (-1);
+
+	while (i-- > 0)
+	    if (digit_convert(buf, buf->text[i], --p) < 0)
+		return (-1);
+    }
+
+    return (0);
 }
 
 /*
@@ -192,7 +274,7 @@ bb_send_stop(struct tm1637_dev_t *tmd)
 }
 
 static void
-bb_send_byte(struct tm1637_dev_t *tmd, uint8_t data)
+bb_send_byte(struct tm1637_dev_t *tmd, const uint8_t data)
 {
     int i = 0, k = 0;
 
@@ -257,10 +339,13 @@ tm1637_create(void)
     struct cuse_dev *pdev;
 
     struct tm1637_dev_t *tmd;
+    struct tm1637_buf_t *buf;
 
     for (n = 0; n < UNIT_MAX; n++) {
 
-	if ((tmd = malloc(sizeof(*tmd))) != NULL) {
+	if (((tmd = malloc(sizeof(*tmd))) != NULL) &&
+	    ((buf = malloc(sizeof(*buf))) != NULL))
+	{
 
 	    if (unit_num[id] < 0) {
 		if (cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) != 0)
@@ -271,6 +356,8 @@ again:
 	    pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
 		CDEV_UID, CDEV_GID, CDEV_MODE,
 		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
+
+	    tmd->buffer = buf;
 
 	    /*
 	     * Resolve device naming conflict with new
@@ -300,6 +387,12 @@ main(int argc, char **argv)
 	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
     tm1637_create();
+
+    /* Intercept signals to our function */
+    if (signal (SIGINT, tm1637_termination) == SIG_IGN)
+	signal (SIGINT, SIG_IGN);
+    if (signal (SIGTERM, tm1637_termination) == SIG_IGN)
+	signal (SIGTERM, SIG_IGN);
 
     for(;;) {
 	tm1637_work(NULL);
