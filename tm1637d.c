@@ -40,6 +40,8 @@
 #include <cuse.h>
 #include <libutil.h>
 
+#include <sys/queue.h>
+
 #define tm1637_errx(code, fmt, ...) do {	\
     syslog(LOG_ERR, "tm1637d: " fmt "\n",##	\
     __VA_ARGS__);				\
@@ -91,6 +93,8 @@ struct tm1637_dev_t {
     struct tm1637_buf_t		*buffer;
     uint8_t			 brightness;
     bool			 on;
+
+    SLIST_ENTRY(tm1637_dev_t)	 next;
 };
 
 static int tm1637_cuse_open(struct cuse_dev *, int);
@@ -425,8 +429,17 @@ daemonize(void)
     pidfile_write(pfh);
 }
 
+static struct tm1637_dev_t *
+tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
+{
+    struct tm1637_dev_t *node = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
+    node->brightness = brightness;
+    node->sclpin = sclpin;
+    node->sdapin = sdapin;
+}
+
 static void
-tm1637_create(void)
+tm1637_list_create(void)
 {
     int id;
     unsigned int n = 0;
@@ -479,6 +492,9 @@ again:
 int
 main(int argc, char **argv)
 {
+    struct tm1637_dev_t *node;
+    LIST_HEAD(tm1637_list, tm1637_dev_t) *tm1637_head;
+    LIST_INIT(tm1637_head);
 
     openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
@@ -490,7 +506,7 @@ main(int argc, char **argv)
     if (gpio_handle == GPIO_INVALID_HANDLE)
 	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
-    tm1637_create();
+    tm1637_list_create();
 
     /* Intercept signals to our function */
     if (signal (SIGINT, tm1637_termination) == SIG_IGN)
