@@ -40,6 +40,7 @@
 #include <cuse.h>
 #include <libutil.h>
 
+#include <getopt.h>
 #include <sys/queue.h>
 
 #define tm1637_errx(code, fmt, ...) do {	\
@@ -48,9 +49,11 @@
     exit(code);					\
 } while (0)
 
+#define NUMBER_OF_GPIO_PINS		256
+
 #define CDEV_UID			0
 #define CDEV_GID			0
-#define CDEV_MODE			666
+#define CDEV_MODE			0666
 
 #define	UNIT_MAX			1
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
@@ -148,6 +151,8 @@ tm1637_termination(int signum)
 	free(tmd);
     }
 
+    cuse_uninit();
+
     /* Close the gpio controller connection */
     gpio_close(gpio_handle);
 
@@ -216,7 +221,7 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
     if (buffer_convert(buf) == 0) {
 	bb_send_data(tmd, 0, MAX_DIGITS);
 	printf("%.*s\n", buf->length, buf->text);
-	return (len);
+	return (0);
     }
 
     return (CUSE_ERR_INVALID);
@@ -455,6 +460,9 @@ static struct tm1637_dev_t *
 tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 {
     struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
+    uid_t uid = CDEV_UID;
+    gid_t gid = CDEV_UID;
+    int perm = CDEV_MODE;
 
     if (tmd != NULL) {
 
@@ -473,7 +481,7 @@ tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 
 again:
 	tmd->pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
-		CDEV_UID, CDEV_GID, CDEV_MODE,
+		uid, gid, perm,
 		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	/*
@@ -502,7 +510,18 @@ again:
 int
 main(int argc, char **argv)
 {
-    struct tm1637_dev_t *node;
+    char *subopts[] = {
+#define SCL	0
+		"scl",
+#define SDA	1
+		"sda",
+	NULL
+    };
+    int ch;
+    size_t scl, sda;
+
+    extern char *optarg, *suboptarg;
+    char *options, *value;
 
     openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
@@ -514,9 +533,41 @@ main(int argc, char **argv)
     if (gpio_handle == GPIO_INVALID_HANDLE)
 	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
-    /* Create tm1637 specimens */
-    for (size_t n = 0; n < UNIT_MAX; n++)
-	tm1637_create(BRIGHT_TYPICAL, 26, 29);
+    while ((ch = getopt(argc, argv, "d:h")) != -1) {
+	switch(ch) {
+	case 'd':
+	    options = optarg;
+	    while (*options) {
+		switch(getsubopt(&options, subopts, &value)) {
+		case SCL:
+		    if (!value)
+			tm1637_errx(1, "no value for scl");
+		    scl = atoi(value);
+		    if (scl >= NUMBER_OF_GPIO_PINS)
+			tm1637_errx(1, "too big value for scl");
+		    break;
+		case SDA:
+		    if (!value)
+			tm1637_errx(1, "no value for sda");
+		    sda = atoi(value);
+		    if (sda >= NUMBER_OF_GPIO_PINS)
+			tm1637_errx(1, "too big value for sda");
+		    break;
+		case -1:
+		    if (suboptarg)
+			tm1637_errx(1, "illegal sub option %s", suboptarg);
+		    else
+			tm1637_errx(1, "missing sub option");
+		    break;
+		}
+	    }
+	    /* Create tm1637 specimens */
+	    tm1637_create(BRIGHT_TYPICAL, scl, sda);
+	    break;
+	case 'h':
+	    break;
+	}
+    }
 
     /* Intercept signals to our function */
     if (signal (SIGINT, tm1637_termination) == SIG_IGN)
