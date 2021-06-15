@@ -77,6 +77,7 @@ static char *pid_file = NULL;
 static char *gpio_device = "/dev/gpioc0";
 gpio_handle_t gpio_handle;
 static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
+int cuse_id = 't' - 'A'; // for "tm1637"[0]
 
 /* Buffer struct */
 struct tm1637_buf_t {
@@ -91,6 +92,8 @@ struct tm1637_dev_t {
     gpio_pin_t			 sclpin;
     gpio_pin_t			 sdapin;
     struct tm1637_buf_t		 buffer;
+    struct cuse_dev		*pdev;
+    int				 cuse_id;
     uint8_t			 brightness;
     bool			 on;
 
@@ -134,8 +137,12 @@ tm1637_termination(int signum)
         /* List Deletion. */
 	struct tm1637_dev_t *tmd = SLIST_FIRST(&tm1637_head);
 
+	/* Clear and turn a display off */
 	display_blank(tmd);
 	display_off(tmd);
+
+	/* Destroy /dev/tm1637* one by one */
+	cuse_dev_destroy(tmd->pdev);
 
 	SLIST_REMOVE_HEAD(&tm1637_head, next);
 	free(tmd);
@@ -447,59 +454,49 @@ daemonize(void)
 static struct tm1637_dev_t *
 tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 {
-    struct tm1637_dev_t *node = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
+    struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
 
-    node->brightness = brightness;
-    node->sclpin = sclpin;
-    node->sdapin = sdapin;
+    if (tmd != NULL) {
 
-    return (node);
-}
+	/* Registry my tm1637 specimen*/
+	SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
 
-static void
-tm1637_list_create(void)
-{
-    int id;
-    unsigned int n = 0;
-    int unit_num[UNIT_MAX] = { -1 };
-    struct cuse_dev *pdev;
+	tmd->brightness = brightness;
+	tmd->sclpin = sclpin;
+	tmd->sdapin = sdapin;
+	tmd->cuse_id = -1;
 
-    struct tm1637_dev_t *tmd;
-    struct tm1637_buf_t *buf;
-
-    for (n = 0; n < UNIT_MAX; n++) {
-
-	if ((tmd = tm1637_create(BRIGHT_TYPICAL, 26, 29)) != NULL)
-	{
-	    SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
-
-	    if (unit_num[id] < 0) {
-		if (cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) != 0)
-		    tm1637_errx(1, "Cannot allocate uniq unit number");
-	    }
+	if (tmd->cuse_id < 0) {
+	    if (cuse_alloc_unit_number_by_id(&tmd->cuse_id, CUSE_ID_DEFAULT(cuse_id)) != 0)
+		tm1637_errx(1, "Cannot allocate uniq unit number");
+	}
 
 again:
-	    pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
+	tmd->pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
 		CDEV_UID, CDEV_GID, CDEV_MODE,
-		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
+		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
-	    gpio_pin_output(gpio_handle, tmd->sdapin);
-	    gpio_pin_output(gpio_handle, tmd->sclpin);
+	/*
+	 * Resolve device naming conflict with new
+	 * kernel evdev module:
+	 */
+	if (tmd->pdev == NULL &&
+	    cuse_alloc_unit_number_by_id(&tmd->cuse_id, CUSE_ID_DEFAULT(cuse_id)) == 0)
+		goto again;
 
-	    display_blank(tmd);
-	    display_on(tmd);
+	syslog(LOG_INFO, "Creating /dev/%s.%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
-	    /*
-	     * Resolve device naming conflict with new
-	     * kernel evdev module:
-	     */
-	    if (pdev == NULL &&
-		cuse_alloc_unit_number_by_id(&unit_num[id], CUSE_ID_DEFAULT(id)) == 0)
-		    goto again;
+	/* Prepare sda- and sclpins to send data */
+	gpio_pin_output(gpio_handle, tmd->sdapin);
+	gpio_pin_output(gpio_handle, tmd->sclpin);
 
-	    syslog(LOG_INFO, "Creating /dev/%s.%d\n", TM1637_CUSE_DEFAULT_DEVNAME, unit_num[id]);
-	}
+	/* Clear a display and turn it on */
+	display_blank(tmd);
+	display_on(tmd);
+
     }
+
+    return (tmd);
 }
 
 int
@@ -517,7 +514,9 @@ main(int argc, char **argv)
     if (gpio_handle == GPIO_INVALID_HANDLE)
 	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
-    tm1637_list_create();
+    /* Create tm1637 specimens */
+    for (size_t n = 0; n < UNIT_MAX; n++)
+	tm1637_create(BRIGHT_TYPICAL, 26, 29);
 
     /* Intercept signals to our function */
     if (signal (SIGINT, tm1637_termination) == SIG_IGN)
