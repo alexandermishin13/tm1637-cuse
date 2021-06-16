@@ -31,6 +31,21 @@
 .Sh SYNOPSIS
 .Nm
 .Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin ...
+.Sh OPTIONS
+The
+.Nm
+supports the following options:
+.Bl -tag -width indent
+.It Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin
+Defines  the
+.Ar scl
+and
+.Ar sda
+device pins to send data to the display, where
+.Ar pin
+is a pin number. The
+.Fl d
+option can be used multiple times.
 .Sh SEE ALSO
 .Xr cuse 3
 .Sh AUTHORS
