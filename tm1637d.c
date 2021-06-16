@@ -146,6 +146,7 @@ tm1637_termination(int signum)
 
 	/* Destroy /dev/tm1637* one by one */
 	cuse_dev_destroy(tmd->pdev);
+	syslog(LOG_INFO, "Destroyed /dev/%s/%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	SLIST_REMOVE_HEAD(&tm1637_head, next);
 	free(tmd);
@@ -482,7 +483,7 @@ tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 again:
 	tmd->pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
 		uid, gid, perm,
-		"%s.%d", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
+		"%s/%d", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	/*
 	 * Resolve device naming conflict with new
@@ -492,7 +493,7 @@ again:
 	    cuse_alloc_unit_number_by_id(&tmd->cuse_id, CUSE_ID_DEFAULT(cuse_id)) == 0)
 		goto again;
 
-	syslog(LOG_INFO, "Creating /dev/%s.%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
+	syslog(LOG_INFO, "Created /dev/%s/%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	/* Prepare sda- and sclpins to send data */
 	gpio_pin_output(gpio_handle, tmd->sdapin);
@@ -541,17 +542,17 @@ main(int argc, char **argv)
 		switch(getsubopt(&options, subopts, &value)) {
 		case SCL:
 		    if (!value)
-			tm1637_errx(1, "no value for scl");
+			tm1637_errx(EXIT_FAILURE, "no value for scl");
 		    scl = atoi(value);
 		    if (scl >= NUMBER_OF_GPIO_PINS)
-			tm1637_errx(1, "too big value for scl");
+			tm1637_errx(EXIT_FAILURE, "too big value for scl");
 		    break;
 		case SDA:
 		    if (!value)
-			tm1637_errx(1, "no value for sda");
+			tm1637_errx(EXIT_FAILURE, "no value for sda");
 		    sda = atoi(value);
 		    if (sda >= NUMBER_OF_GPIO_PINS)
-			tm1637_errx(1, "too big value for sda");
+			tm1637_errx(EXIT_FAILURE, "too big value for sda");
 		    break;
 		case -1:
 		    if (suboptarg)
@@ -561,6 +562,8 @@ main(int argc, char **argv)
 		    break;
 		}
 	    }
+	    if (scl == sda)
+		tm1637_errx(EXIT_FAILURE, "Pins 'scl' and 'sda' cannot be same");
 	    /* Create tm1637 specimens */
 	    tm1637_create(BRIGHT_TYPICAL, scl, sda);
 	    break;
