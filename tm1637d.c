@@ -72,15 +72,32 @@
 #define CHR_GYPHEN			0x40
 
 #define DARKEST				0
+#define BRIGHT_DARK			1
 #define BRIGHT_TYPICAL			2
 #define BRIGHTEST			7
+
+#define TM1637IOC_CLEAR			_IO('T', 1)
+#define TM1637IOC_OFF			_IO('T', 2)
+#define TM1637IOC_ON			_IO('T', 3)
+#define TM1637IOC_SET_BRIGHTNESS	_IOW('T', 11, uint8_t)
+#define TM1637IOC_SET_CLOCKPOINT	_IOW('T', 12, uint8_t)
+#define TM1637IOC_SET_RAWMODE		_IOW('T', 13, uint8_t)
+#define TM1637IOC_SET_CLOCK		_IOW('T', 14, struct tm1637_clock_t)
+#define TM1637IOC_GET_RAWMODE		_IOR('T', 23, uint8_t)
 
 struct pidfh *pfh;
 static char *pid_file = NULL;
 static char *gpio_device = "/dev/gpioc0";
 gpio_handle_t gpio_handle;
 static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
+bool background = false;
 int cuse_id = 't' - 'A'; // for "tm1637"[0]
+
+struct tm1637_clock_t {
+    int tm_min;
+    int tm_hour;
+    bool tm_colon;
+};
 
 /* Buffer struct */
 struct tm1637_buf_t {
@@ -109,6 +126,7 @@ struct tm1637_list *tm1637_head_p;
 static int tm1637_cuse_open(struct cuse_dev *, int);
 static int tm1637_cuse_close(struct cuse_dev *, int);
 static int tm1637_cuse_write(struct cuse_dev *, int, const void *, int);
+static int tm1637_cuse_ioctl(struct cuse_dev *, int, unsigned long, void *);
 
 static void bb_send_start(struct tm1637_dev_t *);
 static void bb_send_stop(struct tm1637_dev_t *);
@@ -128,8 +146,25 @@ static void bb_send_data(struct tm1637_dev_t *, size_t, const size_t);
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
     .cm_close = tm1637_cuse_close,
-    .cm_write = tm1637_cuse_write
+    .cm_write = tm1637_cuse_write,
+    .cm_ioctl = tm1637_cuse_ioctl
 };
+
+static void
+usage()
+{
+    fprintf(stderr, "usage: %s -d code=<code>,pin=<number> ... "
+	"[-b] [-h]\n\n",
+	getprogname());
+    fprintf(stderr,
+    "Options:\n"
+	"    -d, --device scl=<pin>,sda=<pin>\n"
+	"                        Create a device with defined 'scl' and 'sda'\n"
+	"                        pins. Can be used multiple times;\n"
+	"    -b,                 Run in background as a daemon;\n"
+	"    -h, --help          Print this help.\n"
+    );
+}
 
 /* Signals handler. Prepare the programm for end */
 static void
@@ -226,6 +261,13 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
     }
 
     return (CUSE_ERR_INVALID);
+}
+
+static int
+tm1637_cuse_ioctl(struct cuse_dev *cdev, int fflags,
+    unsigned long cmd, void *peer_data)
+{
+    return (0);
 }
 
 static int
@@ -511,6 +553,11 @@ again:
 int
 main(int argc, char **argv)
 {
+    int ch, long_index = 0;
+    size_t scl, sda;
+    extern char *optarg, *suboptarg;
+    char *options, *value, *end;
+
     char *subopts[] = {
 #define SCL	0
 		"scl",
@@ -518,24 +565,28 @@ main(int argc, char **argv)
 		"sda",
 	NULL
     };
-    int ch;
-    size_t scl, sda;
 
-    extern char *optarg, *suboptarg;
-    char *options, *value;
+    static struct option long_options[] = {
+	{"device", required_argument, 0, 'd' },
+	{"help",   required_argument, 0, 'h' },
+	{0, 0, 0, 0}
+    };
 
     openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
 
     if (cuse_init() != 0) {
-	tm1637_errx(EX_USAGE, "Could not open /dev/cuse. Did you kldload cuse4bsd?");
+	tm1637_errx(EX_USAGE, "Could not open '/dev/cuse'. Did you kldload cuse4bsd?");
     }
 
     gpio_handle = gpio_open_device(gpio_device);
     if (gpio_handle == GPIO_INVALID_HANDLE)
 	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
-    while ((ch = getopt(argc, argv, "d:h")) != -1) {
+    while ((ch = getopt_long(argc, argv, "bd:h", long_options, &long_index)) != -1) {
 	switch(ch) {
+	case 'b':
+	    background = true;
+	    break;
 	case 'd':
 	    options = optarg;
 	    while (*options) {
@@ -543,14 +594,14 @@ main(int argc, char **argv)
 		case SCL:
 		    if (!value)
 			tm1637_errx(EXIT_FAILURE, "no value for scl");
-		    scl = atoi(value);
+		    scl = strtoul(value, &end, 0);
 		    if (scl >= NUMBER_OF_GPIO_PINS)
 			tm1637_errx(EXIT_FAILURE, "too big value for scl");
 		    break;
 		case SDA:
 		    if (!value)
 			tm1637_errx(EXIT_FAILURE, "no value for sda");
-		    sda = atoi(value);
+		    sda = strtoul(value, &end, 0);
 		    if (sda >= NUMBER_OF_GPIO_PINS)
 			tm1637_errx(EXIT_FAILURE, "too big value for sda");
 		    break;
@@ -568,9 +619,16 @@ main(int argc, char **argv)
 	    tm1637_create(BRIGHT_TYPICAL, scl, sda);
 	    break;
 	case 'h':
-	    break;
+	    /* FALLTHROUGH */
+	default:
+	    usage();
+	    exit(EXIT_SUCCESS);
 	}
     }
+
+    /* Unbinds from terminal if '-b' */
+    if (background)
+	daemonize();
 
     /* Intercept signals to our function */
     if (signal (SIGINT, tm1637_termination) == SIG_IGN)
