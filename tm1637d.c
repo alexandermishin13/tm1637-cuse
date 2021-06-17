@@ -114,6 +114,9 @@ struct tm1637_dev_t {
     struct tm1637_buf_t		 buffer;
     struct cuse_dev		*pdev;
     int				 cuse_id;
+    uid_t			 uid;
+    gid_t			 gid;
+    int				 perm;
     uint8_t			 brightness;
     bool			 on;
 
@@ -500,22 +503,30 @@ daemonize(void)
 }
 
 static struct tm1637_dev_t *
-tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
+tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness)
 {
     struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
-    uid_t uid = CDEV_UID;
-    gid_t gid = CDEV_UID;
-    int perm = CDEV_MODE;
+
+    tmd->sclpin = sclpin;
+    tmd->sdapin = sdapin;
+    tmd->cuse_id = -1;
+    tmd->uid = CDEV_UID;
+    tmd->gid = CDEV_UID;
+    tmd->perm = CDEV_MODE;
+    tmd->brightness = brightness;
 
     if (tmd != NULL) {
-
-	/* Registry my tm1637 specimen*/
+	/* Register my tm1637 specimen*/
 	SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
+    }
 
-	tmd->brightness = brightness;
-	tmd->sclpin = sclpin;
-	tmd->sdapin = sdapin;
-	tmd->cuse_id = -1;
+    return (tmd);
+}
+
+static struct tm1637_dev_t *
+tm1637_create(struct tm1637_dev_t *tmd)
+{
+    if (tmd != NULL) {
 
 	if (tmd->cuse_id < 0) {
 	    if (cuse_alloc_unit_number_by_id(&tmd->cuse_id, CUSE_ID_DEFAULT(cuse_id)) != 0)
@@ -524,7 +535,7 @@ tm1637_create(uint8_t brightness, gpio_pin_t sclpin, gpio_pin_t sdapin)
 
 again:
 	tmd->pdev = cuse_dev_create(&tm1637_cuse_methods, tmd, 0,
-		uid, gid, perm,
+		tmd->uid, tmd->gid, tmd->perm,
 		"%s/%d", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	/*
@@ -536,15 +547,6 @@ again:
 		goto again;
 
 	syslog(LOG_INFO, "Created /dev/%s/%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
-
-	/* Prepare sda- and sclpins to send data */
-	gpio_pin_output(gpio_handle, tmd->sdapin);
-	gpio_pin_output(gpio_handle, tmd->sclpin);
-
-	/* Clear a display and turn it on */
-	display_blank(tmd);
-	display_on(tmd);
-
     }
 
     return (tmd);
@@ -557,6 +559,7 @@ main(int argc, char **argv)
     size_t scl, sda;
     extern char *optarg, *suboptarg;
     char *options, *value, *end;
+    struct tm1637_dev_t *tmd;
 
     char *subopts[] = {
 #define SCL	0
@@ -573,14 +576,6 @@ main(int argc, char **argv)
     };
 
     openlog("tm1637d", LOG_NDELAY | LOG_PERROR | LOG_PID, LOG_DAEMON);
-
-    if (cuse_init() != 0) {
-	tm1637_errx(EX_USAGE, "Could not open '/dev/cuse'. Did you kldload cuse4bsd?");
-    }
-
-    gpio_handle = gpio_open_device(gpio_device);
-    if (gpio_handle == GPIO_INVALID_HANDLE)
-	tm1637_errx(1, "Failed to open '%s'", gpio_device);
 
     while ((ch = getopt_long(argc, argv, "bd:h", long_options, &long_index)) != -1) {
 	switch(ch) {
@@ -616,7 +611,7 @@ main(int argc, char **argv)
 	    if (scl == sda)
 		tm1637_errx(EXIT_FAILURE, "Pins 'scl' and 'sda' cannot be same");
 	    /* Create tm1637 specimens */
-	    tm1637_create(BRIGHT_TYPICAL, scl, sda);
+	    tmd = tm1637_register(scl, sda, BRIGHT_TYPICAL);
 	    break;
 	case 'h':
 	    /* FALLTHROUGH */
@@ -624,6 +619,27 @@ main(int argc, char **argv)
 	    usage();
 	    exit(EXIT_SUCCESS);
 	}
+    }
+
+    if (cuse_init() != 0) {
+	tm1637_errx(EX_USAGE, "Could not open '/dev/cuse'. Did you kldload cuse4bsd?");
+    }
+
+    gpio_handle = gpio_open_device(gpio_device);
+    if (gpio_handle == GPIO_INVALID_HANDLE)
+	tm1637_errx(1, "Failed to open '%s'", gpio_device);
+
+    /* Create devices and initialize them */
+    SLIST_FOREACH(tmd, &tm1637_head, next) {
+	tm1637_create(tmd);
+
+	/* Prepare sda- and sclpins to send data */
+	gpio_pin_output(gpio_handle, tmd->sdapin);
+	gpio_pin_output(gpio_handle, tmd->sclpin);
+
+	/* Clear a display and turn it on */
+	display_blank(tmd);
+	display_on(tmd);
     }
 
     /* Unbinds from terminal if '-b' */
