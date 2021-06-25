@@ -43,12 +43,14 @@
 #include <getopt.h>
 #include <sys/queue.h>
 
+
 #define tm1637_errx(code, fmt, ...) do {	\
     syslog(LOG_ERR, "tm1637d: " fmt "\n",##	\
     __VA_ARGS__);				\
     exit(code);					\
 } while (0)
 
+#define MIN(x,y)			((x) < (y) ? (x) : (y))
 #define NUMBER_OF_GPIO_PINS		256
 
 #define CDEV_UID			0
@@ -66,7 +68,7 @@
 #define DISPLAY_CTRL			0x88
 
 #define MAX_DIGITS			4
-#define MAX_CHARS			MAX_DIGITS+1
+#define MAX_CHARS			MAX_DIGITS+2
 
 #define CHR_SPACE			0x00
 #define CHR_GYPHEN			0x40
@@ -101,7 +103,7 @@ struct tm1637_clock_t {
 
 /* Buffer struct */
 struct tm1637_buf_t {
-    char			 text[MAX_CHARS];
+    unsigned char		 text[MAX_CHARS];
     size_t			 length;
     uint8_t			 codes[MAX_DIGITS];
     bool			 marks[MAX_DIGITS];
@@ -135,7 +137,7 @@ static void bb_send_start(struct tm1637_dev_t *);
 static void bb_send_stop(struct tm1637_dev_t *);
 static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
 
-static int digit_convert(struct tm1637_buf_t *, const char, const int);
+static int digit_convert(struct tm1637_buf_t *, const unsigned char, const int);
 static int buffer_convert(struct tm1637_buf_t *);
 
 static void display_on(struct tm1637_dev_t *);
@@ -145,6 +147,8 @@ static void display_blank(struct tm1637_dev_t *);
 static void bb_send_command(struct tm1637_dev_t *, const uint8_t);
 static void bb_send_data1(struct tm1637_dev_t *, const size_t);
 static void bb_send_data(struct tm1637_dev_t *, size_t, const size_t);
+
+static uint8_t is_raw_command(struct tm1637_dev_t *);
 
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
@@ -160,7 +164,7 @@ usage()
 	"[-b] [-h]\n\n",
 	getprogname());
     fprintf(stderr,
-    "Options:\n"
+    "Optioqns:\n"
 	"    -d, --device scl=<pin>,sda=<pin>\n"
 	"                        Create a device with defined 'scl' and 'sda'\n"
 	"                        pins. Can be used multiple times;\n"
@@ -257,7 +261,11 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
     if (error)
 	return (error);
 
+    if ((is_raw_command(tmd)) == 0)
+	return (0);
+
     if (buffer_convert(buf) == 0) {
+	bb_send_command(tmd, ADDR_AUTO);
 	bb_send_data(tmd, 0, MAX_DIGITS);
 	printf("%.*s\n", buf->length, buf->text);
 	return (0);
@@ -273,8 +281,55 @@ tm1637_cuse_ioctl(struct cuse_dev *cdev, int fflags,
     return (0);
 }
 
+static uint8_t
+is_raw_command(struct tm1637_dev_t *tmd)
+{
+    size_t start, stop, length = tmd->buffer.length;
+    uint8_t *text = &tmd->buffer.text[0];
+    uint8_t tmp;
+
+    switch (text[0]) {
+    /* Send one byte at a fixed position */
+    case ADDR_FIXED:
+	if ((length < 3) ||
+	   ((tmp = text[1]^ADDR_START) >= MAX_DIGITS))
+	    return (-1);
+
+	tmd->buffer.codes[tmp] = text[2];
+	bb_send_data1(tmd, tmp);
+	break;
+    /* Send up to 4 bytes at an autoincremented position */
+    case ADDR_AUTO:
+	if ((length < 3) ||
+	   ((tmp = text[1]^ADDR_START) >= MAX_DIGITS))
+	    return (-1);
+
+	start = tmp;
+	stop = MIN(length-2, MAX_DIGITS);
+	for (size_t i=2; tmp<stop; tmp++)
+	    tmd->buffer.codes[tmp] = text[i++];
+
+	bb_send_data(tmd, start, stop);
+	break;
+    /* Send one byte command to turn display off */
+    case DISPLAY_OFF:
+	display_off(tmd);
+	break;
+    default:
+	/* Send one byte command to light display with the bright level 0..7 */
+	if ((tmp = (text[0]^DISPLAY_CTRL)) <= BRIGHTEST) {
+	    tmd->brightness = tmp;
+	    display_on(tmd);
+	    break;
+	}
+	return (-1);
+    }
+
+    return (0);
+}
+
 static int
-digit_convert(struct tm1637_buf_t *buf, const char c, const int p)
+digit_convert(struct tm1637_buf_t *buf, const unsigned char c, const int p)
 {
     switch (c) {
     case ' ':
@@ -290,7 +345,7 @@ digit_convert(struct tm1637_buf_t *buf, const char c, const int p)
 	break; // skip a digit position
     default:
 	if ((c >= '0') && (c <= '9'))
-	buf->codes[p] = char_code[c&0x0f];
+	    buf->codes[p] = char_code[c&0x0f];
     }
 
     return (0);
@@ -308,7 +363,7 @@ buffer_convert(struct tm1637_buf_t *buf)
 
 	do {
 	    if (i == 2) {
-		char c = buf->text[i++];
+		unsigned char c = buf->text[i++];
 
 		if (c == ':')
 		    buf->codes[1] |= 0x80;
@@ -399,6 +454,7 @@ display_blank(struct tm1637_dev_t *tmd)
     while(--position)
 	tmd->buffer.codes[position] = CHR_SPACE;
 
+    bb_send_command(tmd, ADDR_AUTO);
     bb_send_data(tmd, 0, MAX_DIGITS);
 }
 
@@ -439,7 +495,7 @@ bb_send_command(struct tm1637_dev_t *tmd, const uint8_t cmd)
 static void
 bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
 {
-    uint8_t addr = ADDR_START + pos;
+    uint8_t addr = ADDR_START|pos;
     uint8_t data = tmd->buffer.codes[pos];
 
     bb_send_command(tmd, ADDR_FIXED);
@@ -458,7 +514,7 @@ bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
 static void
 bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
 {
-    uint8_t addr = ADDR_START + pos;
+    uint8_t addr = ADDR_START|pos;
 
     bb_send_command(tmd, ADDR_AUTO);
 
