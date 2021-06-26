@@ -57,15 +57,14 @@
 #define CDEV_GID			0
 #define CDEV_MODE			0666
 
-#define	UNIT_MAX			1
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
 #define ACK_TIMEOUT			200
 
-#define ADDR_AUTO			0x40
-#define ADDR_FIXED			0x44
-#define ADDR_START			0xc0
-#define DISPLAY_OFF			0x80
-#define DISPLAY_CTRL			0x88
+#define ADDR_AUTO			0x40 // 1st byte
+#define ADDR_FIXED			0x44 // 1st byte
+#define ADDR_START			0xc0 // 2nd byte
+#define DISPLAY_OFF			0x80 // Only byte
+#define DISPLAY_CTRL			0x88 // Only byte
 
 #define MAX_DIGITS			4
 #define MAX_CHARS			MAX_DIGITS+2
@@ -140,9 +139,11 @@ static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
 static int digit_convert(struct tm1637_buf_t *, const unsigned char, const int);
 static int buffer_convert(struct tm1637_buf_t *);
 
-static void display_on(struct tm1637_dev_t *);
-static void display_off(struct tm1637_dev_t *);
-static void display_blank(struct tm1637_dev_t *);
+static void tm1637_display_on(struct tm1637_dev_t *);
+static void tm1637_display_off(struct tm1637_dev_t *);
+static void tm1637_display_blank(struct tm1637_dev_t *);
+static void tm1637_set_brightness(struct tm1637_dev_t *, const uint8_t);
+static void tm1637_set_clock(struct tm1637_dev_t *, const struct tm1637_clock_t);
 
 static void bb_send_command(struct tm1637_dev_t *, const uint8_t);
 static void bb_send_data1(struct tm1637_dev_t *, const size_t);
@@ -183,8 +184,8 @@ tm1637_termination(int signum)
 	struct tm1637_dev_t *tmd = SLIST_FIRST(&tm1637_head);
 
 	/* Clear and turn a display off */
-	display_blank(tmd);
-	display_off(tmd);
+	tm1637_display_blank(tmd);
+	tm1637_display_off(tmd);
 
 	/* Destroy /dev/tm1637* one by one */
 	cuse_dev_destroy(tmd->pdev);
@@ -278,7 +279,39 @@ static int
 tm1637_cuse_ioctl(struct cuse_dev *cdev, int fflags,
     unsigned long cmd, void *peer_data)
 {
-    return (0);
+    struct tm1637_dev_t *tmd = cuse_dev_get_priv0(cdev);
+    int error = 0;
+    struct tm1637_clock_t time;
+    uint8_t brightness;
+
+    switch (cmd) {
+    case TM1637IOC_CLEAR:
+	tm1637_display_blank(tmd);
+	break;
+    case TM1637IOC_OFF:
+	tm1637_display_off(tmd);
+	break;
+    case TM1637IOC_ON:
+	tm1637_display_on(tmd);
+	break;
+    case TM1637IOC_SET_BRIGHTNESS:
+	error = cuse_copy_in(peer_data, &brightness, sizeof(brightness));
+	if (error != CUSE_ERR_NONE)
+	    break;
+	tm1637_set_brightness(tmd, brightness);
+	break;
+    case TM1637IOC_SET_CLOCK:
+	error = cuse_copy_in(peer_data, &time, sizeof(time));
+	if (error != CUSE_ERR_NONE)
+	    break;
+	tm1637_set_clock(tmd, time);
+	break;
+    default:
+	/* Not supported. */
+	return (CUSE_ERR_INVALID);
+    }
+
+    return (error);
 }
 
 static uint8_t
@@ -313,13 +346,13 @@ is_raw_command(struct tm1637_dev_t *tmd)
 	break;
     /* Send one byte command to turn display off */
     case DISPLAY_OFF:
-	display_off(tmd);
+	tm1637_display_off(tmd);
 	break;
     default:
 	/* Send one byte command to light display with the bright level 0..7 */
 	if ((tmp = (text[0]^DISPLAY_CTRL)) <= BRIGHTEST) {
 	    tmd->brightness = tmp;
-	    display_on(tmd);
+	    tm1637_display_on(tmd);
 	    break;
 	}
 	return (-1);
@@ -446,13 +479,14 @@ bb_send_byte(struct tm1637_dev_t *tmd, const uint8_t data)
  * Writes all blanks to a display
  */
 static void
-display_blank(struct tm1637_dev_t *tmd)
+tm1637_display_blank(struct tm1637_dev_t *tmd)
 {
     size_t position = MAX_DIGITS;
+    uint8_t *codes = &tmd->buffer.codes[0];
 
     // Display all blanks
     while(--position)
-	tmd->buffer.codes[position] = CHR_SPACE;
+	codes[position] = CHR_SPACE;
 
     bb_send_command(tmd, ADDR_AUTO);
     bb_send_data(tmd, 0, MAX_DIGITS);
@@ -460,7 +494,7 @@ display_blank(struct tm1637_dev_t *tmd)
 
 /* Off the display */
 static void
-display_off(struct tm1637_dev_t *tmd)
+tm1637_display_off(struct tm1637_dev_t *tmd)
 {
   bb_send_command(tmd, DISPLAY_OFF);
 
@@ -469,11 +503,58 @@ display_off(struct tm1637_dev_t *tmd)
 
 /* On the diplay with current brightness */
 static void
-display_on(struct tm1637_dev_t *tmd)
+tm1637_display_on(struct tm1637_dev_t *tmd)
 {
   bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
 
-  tmd->on = true; // display is off
+  tmd->on = true; // display is on
+}
+
+/*
+ * Sets a display on with a brightness value as parameter
+ */
+static void
+tm1637_set_brightness(struct tm1637_dev_t *tmd, const uint8_t brightness)
+{
+    int err;
+
+    /* If brightness is really changed */
+    if ((brightness != tmd->brightness) &&
+        (brightness <= BRIGHTEST))
+    {
+	tmd->brightness = brightness;
+	/* Only change variable if a display is not on */
+	if(tmd->on)
+	    bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
+    }
+}
+
+/*
+ * Sets time to the display
+ */
+static void
+tm1637_set_clock(struct tm1637_dev_t *tmd, const struct tm1637_clock_t clock)
+{
+    int t;
+    uint8_t *codes = &tmd->buffer.codes[0];
+
+    /* Four clock digits */
+    t = clock.tm_hour / 10;
+    codes[0] = char_code[t&0x0f];
+    t = clock.tm_hour % 10;
+    codes[1] = char_code[t];
+    t = clock.tm_min / 10;
+    codes[2] = char_code[t&0x0f];
+    t = clock.tm_min % 10;
+    codes[3] = char_code[t];
+
+//    printf("%d%c%d\n", clock.tm_hour, (clock.tm_colon)?':':' ', clock.tm_min);
+
+    /* Clockpoint */
+    if (clock.tm_colon)
+	codes[1] |= 0x80;
+
+    bb_send_data(tmd, 0, MAX_DIGITS);
 }
 
 /*
@@ -515,6 +596,7 @@ static void
 bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
 {
     uint8_t addr = ADDR_START|pos;
+    uint8_t *codes = &tmd->buffer.codes[0];
 
     bb_send_command(tmd, ADDR_AUTO);
 
@@ -522,7 +604,7 @@ bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
     bb_send_byte(tmd, addr);
 
     do {
-	bb_send_byte(tmd, tmd->buffer.codes[pos]);
+	bb_send_byte(tmd, codes[pos]);
     } while(++pos < stop);
 
     bb_send_stop(tmd);
@@ -612,16 +694,18 @@ int
 main(int argc, char **argv)
 {
     int ch, long_index = 0;
-    size_t scl, sda;
+    size_t scl, sda, brightness = BRIGHT_TYPICAL;
     extern char *optarg, *suboptarg;
     char *options, *value, *end;
     struct tm1637_dev_t *tmd;
 
     char *subopts[] = {
-#define SCL	0
-		"scl",
-#define SDA	1
-		"sda",
+#define SCL		0
+			"scl",
+#define SDA		1
+			"sda",
+#define BRIGHTNESS	2
+			"brightness",
 	NULL
     };
 
@@ -656,6 +740,12 @@ main(int argc, char **argv)
 		    if (sda >= NUMBER_OF_GPIO_PINS)
 			tm1637_errx(EXIT_FAILURE, "too big value for sda");
 		    break;
+		case BRIGHTNESS:
+		    if (value) {
+			brightness = strtoul(value, &end, 0);
+			if (brightness > BRIGHTEST)
+			    tm1637_errx(EXIT_FAILURE, "too big value for brightness");
+		    }
 		case -1:
 		    if (suboptarg)
 			tm1637_errx(1, "illegal sub option %s", suboptarg);
@@ -667,7 +757,7 @@ main(int argc, char **argv)
 	    if (scl == sda)
 		tm1637_errx(EXIT_FAILURE, "Pins 'scl' and 'sda' cannot be same");
 	    /* Create tm1637 specimens */
-	    tmd = tm1637_register(scl, sda, BRIGHT_TYPICAL);
+	    tmd = tm1637_register(scl, sda, brightness);
 	    break;
 	case 'h':
 	    /* FALLTHROUGH */
@@ -694,8 +784,8 @@ main(int argc, char **argv)
 	gpio_pin_output(gpio_handle, tmd->sclpin);
 
 	/* Clear a display and turn it on */
-	display_blank(tmd);
-	display_on(tmd);
+	tm1637_display_blank(tmd);
+	tm1637_display_on(tmd);
     }
 
     /* Unbinds from terminal if '-b' */
