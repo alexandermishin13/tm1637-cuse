@@ -43,6 +43,7 @@
 #include <getopt.h>
 #include <sys/queue.h>
 
+#include "include/tm1637.h"
 
 #define tm1637_errx(code, fmt, ...) do {	\
     syslog(LOG_ERR, "tm1637d: " fmt "\n",##	\
@@ -60,45 +61,20 @@
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
 #define ACK_TIMEOUT			200
 
-#define ADDR_AUTO			0x40 // 1st byte
-#define ADDR_FIXED			0x44 // 1st byte
-#define ADDR_START			0xc0 // 2nd byte
-#define DISPLAY_OFF			0x80 // Only byte
-#define DISPLAY_CTRL			0x88 // Only byte
-
 #define MAX_DIGITS			4
 #define MAX_CHARS			MAX_DIGITS+2
-
-#define CHR_SPACE			0x00
-#define CHR_GYPHEN			0x40
 
 #define DARKEST				0
 #define BRIGHT_DARK			1
 #define BRIGHT_TYPICAL			2
 #define BRIGHTEST			7
 
-#define TM1637IOC_CLEAR			_IO('T', 1)
-#define TM1637IOC_OFF			_IO('T', 2)
-#define TM1637IOC_ON			_IO('T', 3)
-#define TM1637IOC_SET_BRIGHTNESS	_IOW('T', 11, uint8_t)
-#define TM1637IOC_SET_CLOCKPOINT	_IOW('T', 12, uint8_t)
-#define TM1637IOC_SET_RAWMODE		_IOW('T', 13, uint8_t)
-#define TM1637IOC_SET_CLOCK		_IOW('T', 14, struct tm1637_clock_t)
-#define TM1637IOC_GET_RAWMODE		_IOR('T', 23, uint8_t)
-
 struct pidfh *pfh;
 static char *pid_file = NULL;
 static char *gpio_device = "/dev/gpioc0";
 gpio_handle_t gpio_handle;
-static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
 bool background = false;
 int cuse_id = 't' - 'A'; // for "tm1637"[0]
-
-struct tm1637_clock_t {
-    int tm_min;
-    int tm_hour;
-    bool tm_colon;
-};
 
 /* Buffer struct */
 struct tm1637_buf_t {
