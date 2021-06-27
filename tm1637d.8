@@ -38,7 +38,11 @@ The
 .Nm
 supports the following options:
 .Bl -tag -width indent
-.It Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns Op Ar brightness Ns = Ns Ar level
+.It Fl b
+Daemonize the
+.Nm
+after running;
+.It Fl d , Ic --device Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns Op Ar brightness Ns = Ns Ar level
 Defines  the
 .Ar scl
 and
@@ -51,6 +55,8 @@ can be defined, an integer from 0 to 7 is acceptable
 (Default is 2). The
 .Fl d
 option can be used multiple times.
+.It Fl h , Ic --help
+Brief help.
 .Sh SEE ALSO
 .Xr cuse 3
 .Sh AUTHORS
