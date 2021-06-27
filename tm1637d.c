@@ -266,9 +266,7 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (0);
 
     if (buffer_convert(buf) == 0) {
-	bb_send_command(tmd, ADDR_AUTO);
 	bb_send_data(tmd, 0, MAX_DIGITS);
-	printf("%.*s\n", buf->length, buf->text);
 	return (0);
     }
 
@@ -488,7 +486,6 @@ tm1637_display_blank(struct tm1637_dev_t *tmd)
     while(--position)
 	codes[position] = CHR_SPACE;
 
-    bb_send_command(tmd, ADDR_AUTO);
     bb_send_data(tmd, 0, MAX_DIGITS);
 }
 

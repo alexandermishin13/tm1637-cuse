@@ -30,20 +30,25 @@
 .Nd Cuse based tm1637 display userland driver.
 .Sh SYNOPSIS
 .Nm
-.Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin ...
+.Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns
+.Oo Ar brightness Ns = Ns Ar level
+.Oc ...
 .Sh OPTIONS
 The
 .Nm
 supports the following options:
 .Bl -tag -width indent
-.It Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin
+.It Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns Op Ar brightness Ns = Ns Ar level
 Defines  the
 .Ar scl
 and
 .Ar sda
 device pins to send data to the display, where
 .Ar pin
-is a pin number. The
+is a pin number. Optionally a brightness
+.Ar level
+can be defined, an integer from 0 to 7 is acceptable
+(Default is 2). The
 .Fl d
 option can be used multiple times.
 .Sh SEE ALSO
