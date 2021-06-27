@@ -619,15 +619,15 @@ tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness)
 {
     struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
 
-    tmd->sclpin = sclpin;
-    tmd->sdapin = sdapin;
-    tmd->cuse_id = -1;
-    tmd->uid = CDEV_UID;
-    tmd->gid = CDEV_UID;
-    tmd->perm = CDEV_MODE;
-    tmd->brightness = brightness;
-
     if (tmd != NULL) {
+	tmd->sclpin = sclpin;
+	tmd->sdapin = sdapin;
+	tmd->cuse_id = -1;
+	tmd->uid = CDEV_UID;
+	tmd->gid = CDEV_UID;
+	tmd->perm = CDEV_MODE;
+	tmd->brightness = brightness;
+
 	/* Register my tm1637 specimen*/
 	SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
     }
