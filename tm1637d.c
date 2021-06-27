@@ -503,10 +503,12 @@ static void
 tm1637_display_on(struct tm1637_dev_t *tmd)
 {
     if (!tmd->on) {
-	bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
+	/* First set flag for send data correctly */
+	tmd->on = true;
 	bb_send_data(tmd, 0, MAX_DIGITS);
-	tmd->on = true; // display is on
     }
+    /* Light the display anyway */
+    bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
 }
 
 /*

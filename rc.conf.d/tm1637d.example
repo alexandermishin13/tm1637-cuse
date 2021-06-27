@@ -1,0 +1,4 @@
+tm1637d_enable="YES"
+tm1637d_profiles="clock"
+tm1637d_clock_scl=26
+tm1637d_clock_sda=29
