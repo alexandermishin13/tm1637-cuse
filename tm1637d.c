@@ -493,18 +493,20 @@ tm1637_display_blank(struct tm1637_dev_t *tmd)
 static void
 tm1637_display_off(struct tm1637_dev_t *tmd)
 {
-  bb_send_command(tmd, DISPLAY_OFF);
+    bb_send_command(tmd, DISPLAY_OFF);
 
-  tmd->on = false; // display is off
+    tmd->on = false; // display is off
 }
 
 /* On the diplay with current brightness */
 static void
 tm1637_display_on(struct tm1637_dev_t *tmd)
 {
-  bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
-
-  tmd->on = true; // display is on
+    if (!tmd->on) {
+	bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
+	bb_send_data(tmd, 0, MAX_DIGITS);
+	tmd->on = true; // display is on
+    }
 }
 
 /*
@@ -513,14 +515,12 @@ tm1637_display_on(struct tm1637_dev_t *tmd)
 static void
 tm1637_set_brightness(struct tm1637_dev_t *tmd, const uint8_t brightness)
 {
-    int err;
-
     /* If brightness is really changed */
     if ((brightness != tmd->brightness) &&
         (brightness <= BRIGHTEST))
     {
 	tmd->brightness = brightness;
-	/* Only change variable if a display is not on */
+	/* Only change a variable if a display is not on */
 	if(tmd->on)
 	    bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
     }
@@ -544,8 +544,6 @@ tm1637_set_clock(struct tm1637_dev_t *tmd, const struct tm1637_clock_t clock)
     codes[2] = char_code[t&0x0f];
     t = clock.tm_min % 10;
     codes[3] = char_code[t];
-
-//    printf("%d%c%d\n", clock.tm_hour, (clock.tm_colon)?':':' ', clock.tm_min);
 
     /* Clockpoint */
     if (clock.tm_colon)
@@ -576,12 +574,14 @@ bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
     uint8_t addr = ADDR_START|pos;
     uint8_t data = tmd->buffer.codes[pos];
 
-    bb_send_command(tmd, ADDR_FIXED);
+    if (tmd->on) {
+	bb_send_command(tmd, ADDR_FIXED);
 
-    bb_send_start(tmd);
-    bb_send_byte(tmd, addr);
-    bb_send_byte(tmd, data);
-    bb_send_stop(tmd);
+	bb_send_start(tmd);
+	bb_send_byte(tmd, addr);
+	bb_send_byte(tmd, data);
+	bb_send_stop(tmd);
+    }
 }
 
 /*
@@ -595,16 +595,15 @@ bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
     uint8_t addr = ADDR_START|pos;
     uint8_t *codes = &tmd->buffer.codes[0];
 
-    bb_send_command(tmd, ADDR_AUTO);
+    if (tmd->on) {
+	bb_send_command(tmd, ADDR_AUTO);
 
-    bb_send_start(tmd);
-    bb_send_byte(tmd, addr);
-
-    do {
-	bb_send_byte(tmd, codes[pos]);
-    } while(++pos < stop);
-
-    bb_send_stop(tmd);
+	bb_send_start(tmd);
+	bb_send_byte(tmd, addr);
+	for( ;pos < stop; pos++)
+	    bb_send_byte(tmd, codes[pos]);
+	bb_send_stop(tmd);
+    }
 }
 
 /* Daemonize wrapper */
