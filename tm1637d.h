@@ -48,8 +48,16 @@ struct tm1637_clock_t {
 #define TM1637IOC_SET_CLOCKPOINT	_IOW('T', 12, uint8_t)
 #define TM1637IOC_SET_CLOCK		_IOW('T', 14, struct tm1637_clock_t)
 
-static const uint8_t char_code[] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
-
+#define CHR_0				0x3f
+#define CHR_1				0x06
+#define CHR_2				0x5b
+#define CHR_3				0x4f
+#define CHR_4				0x66
+#define CHR_5				0x6d
+#define CHR_6				0x7d
+#define CHR_7				0x07
+#define CHR_8				0x7f
+#define CHR_9				0x6f
 #define CHR_SPACE			0x00
 #define CHR_GYPHEN			0x40
 

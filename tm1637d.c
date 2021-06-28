@@ -43,7 +43,7 @@
 #include <getopt.h>
 #include <sys/queue.h>
 
-#include "include/tm1637.h"
+#include "tm1637d.h"
 
 #define tm1637_errx(code, fmt, ...) do {	\
     syslog(LOG_ERR, "tm1637d: " fmt "\n",##	\
@@ -72,9 +72,14 @@
 struct pidfh *pfh;
 static char *pid_file = NULL;
 static char *gpio_device = "/dev/gpioc0";
-gpio_handle_t gpio_handle;
-bool background = false;
-int cuse_id = 't' - 'A'; // for "tm1637"[0]
+static gpio_handle_t gpio_handle;
+static bool background = false;
+static const int cuse_id = 't' - 'A'; // for "tm1637"[0]
+
+static const uint8_t char_code[10] = {
+    CHR_0, CHR_1, CHR_2, CHR_3, CHR_4,
+    CHR_5, CHR_6, CHR_7, CHR_8, CHR_9
+};
 
 /* Buffer struct */
 struct tm1637_buf_t {

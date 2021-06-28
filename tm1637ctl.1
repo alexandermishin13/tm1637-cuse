@@ -22,44 +22,19 @@
 .\"CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 .\"OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 .\"OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-.Dd Jun 14, 2021
-.Dt TM1637D 8
+.Dd Jun 28, 2021
+.Dt TM1637CTL 1
 .Os
 .Sh NAME
-.Nm tm1637d
-.Nd Cuse based tm1637 display userland driver.
+.Nm tm1637ctl
+.Nd tm1637 display control program.
 .Sh SYNOPSIS
 .Nm
-.Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns
-.Oo Ar brightness Ns = Ns Ar level
-.Oc ...
-.Sh OPTIONS
-The
-.Nm
-supports the following options:
-.Bl -tag -width indent
-.It Fl b
-Daemonize the
-.Nm
-after running;
-.It Fl d , Ic --device Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns Op Ar brightness Ns = Ns Ar level
-Defines  the
-.Ar scl
-and
-.Ar sda
-device pins to send data to the display, where
-.Ar pin
-is a pin number. Optionally a brightness
-.Ar level
-can be defined, an integer from 0 to 7 is acceptable
-(Default is 2). The
-.Fl d
-option can be used multiple times.
-.It Fl h , Ic --help
-Brief help.
+.Fl t Ar 0|1
+.Fl l Ar brightness
+.Oo Fl d Ar device
 .Sh SEE ALSO
-.Xr cuse 3 ,
-.Xr tm1637ctl 1
+.Xr tm1637d 8
 .Sh AUTHORS
 .An -nosplit
 .An Alexander Mishin Aq mishin@mh.net.ru

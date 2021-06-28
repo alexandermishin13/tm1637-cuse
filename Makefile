@@ -3,22 +3,27 @@
 PREFIX=		/usr/local
 MK_DEBUG_FILES=	no
 
-PROG=		tm1637d
-BINDIR=		${PREFIX}/sbin
+PROGS=			tm1637d tm1637ctl
+BINDIR_tm1637d=		${PREFIX}/sbin
+BINDIR_tm1637ctl=	${PREFIX}/bin
 
-SCRIPTS=		${PROG}.sh
-SCRIPTSNAME_${PROG}.sh=	${PROG}
-SCRIPTSDIR_${PROG}.sh=	${PREFIX}/etc/rc.d
+SCRIPTS=		tm1637d.sh
+SCRIPTSNAME_tm1637d.sh=	tm1637d
+SCRIPTSDIR_tm1637d.sh=	${PREFIX}/etc/rc.d
 
-MAN=		${PROG}.8
-MANDIR=		${PREFIX}/man/man
+INCS=			tm1637d.h
+INCSDIR=		${PREFIX}/include
 
-LDADD=		-L/usr/local/lib -lutil -lgpio -lcuse
+MAN=			tm1637d.8
+MANDIR=			${PREFIX}/man/man
+
+LDADD_tm1637d=		-L/usr/local/lib -lutil -lgpio -lcuse
+LDADD_tm1637ctl=	-L/usr/local/lib
 
 uninstall:
-	rm ${BINDIR}/${PROG}
+	rm ${BINDIR}/tm1637d
 	rm ${MANDIR}8/${MAN}.gz
-	rm ${PREFIX}/etc/rc.d/${PROG}
+	rm ${PREFIX}/etc/rc.d/tm1637d
 
 check:
 	cppcheck \
@@ -27,4 +32,4 @@ check:
 	    -I/usr/local/include \
 	    ./
 
-.include <bsd.prog.mk>
+.include <bsd.progs.mk>
