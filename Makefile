@@ -14,7 +14,8 @@ SCRIPTSDIR_tm1637d.sh=	${PREFIX}/etc/rc.d
 INCS=			tm1637d.h
 INCSDIR=		${PREFIX}/include
 
-MAN=			tm1637d.8
+MAN_tm1637d=		tm1637d.8
+MAN_tm1637ctl=		tm1637ctl.1
 MANDIR=			${PREFIX}/man/man
 
 LDADD_tm1637d=		-L/usr/local/lib -lutil -lgpio -lcuse
