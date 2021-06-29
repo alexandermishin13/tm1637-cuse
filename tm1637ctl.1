@@ -30,10 +30,34 @@
 .Nd tm1637 display control program.
 .Sh SYNOPSIS
 .Nm
-.Fl t Ar 0|1
-.Fl l Ar brightness
-.Oo Fl d Ar device
+.Op Fl t Ar 0|1
+.Op Fl l Ar level
+.Op Fl d Ar device
+.Sh OPTIONS
+The
+.Nm
+supports the following options:
+.Bl -tag -width indent
+.It Fl d , Ic --device Ar device
+Specify a
+.Xr tm1637 4
+or
+.Xr tm1637d 8
+character device. The compiled-in default is
+.Pa /dev/tm1637 Ns ;
+.It Fl l , Ic --brightness Ar level
+Set the display brightness level as an integer 0..7. The display will not
+turn on if it is off, but the brightness will be remembered until the next
+time it is turned on; 
+.It Fl t , Ic --turn Ar 0|1
+Turn the display off or on. When it turns on it lights with brightness
+previously remembered.
+.Sh DESCRIPTION
+The
+.Nm
+is a simple utility to set brightness level and turn on and off the display.
 .Sh SEE ALSO
+.Xr tm1637 4 ,
 .Xr tm1637d 8
 .Sh AUTHORS
 .An -nosplit

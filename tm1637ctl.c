@@ -34,12 +34,13 @@
 #include <getopt.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
+#include <err.h>
 #include "tm1637d.h"
 
 static void
 usage()
 {
-    fprintf(stderr, "usage: %s -t <0|1> -l <0..7> [-d <device>] [-h]\n\n",
+    fprintf(stderr, "usage: %s [-t <0|1>] [-l <0..7>] [-d <device>] [-h]\n\n",
 	getprogname());
     fprintf(stderr,
     "Optioqns:\n"
@@ -79,11 +80,18 @@ main(int argc, char **argv)
 	    value = strtoul(optarg, &end, 0);
 	    if (value <= 1)
 		turn = value;
+	    else
+		errx(EXIT_FAILURE,
+		    "Only 1 or 0 is allowed to turn the display on or off ");
 	    break;
 	case 'l':
 	    value = strtoul(optarg, &end, 0);
 	    if (value <= 7)
 		level = value;
+	    else
+		errx(EXIT_FAILURE,
+		     "Brightness level %lu is out of range. Allowed values are 0..7",
+		     value);
 	    break;
 	case 'h':
 	    /* FALLTHROUGH */
@@ -94,10 +102,8 @@ main(int argc, char **argv)
     }
 
     dev = open(dev_tm1637, O_WRONLY | O_DIRECT);
-    if (dev < 0) {
-	perror("opening tm1637 device");
-	exit(EXIT_FAILURE);
-    }
+    if (dev < 0)
+	errx(EXIT_FAILURE, "opening tm1637 device");
 
     if (level <= 7)
 	ioctl(dev, TM1637IOC_SET_BRIGHTNESS, &level);
