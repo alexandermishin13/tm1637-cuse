@@ -1,6 +1,6 @@
 # tm1637-cuse
 
-Cuse based userland device driver for tm1637 dysplay.
+Cuse based userland device driver for tm1637 display.
 
 ## About
 The `cuse`-based driver could be a successor to tm1637-kmod as it is simpler
