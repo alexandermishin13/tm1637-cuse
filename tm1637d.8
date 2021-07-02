@@ -59,6 +59,65 @@ The
 option can be used multiple times.
 .It Fl h , Ic --help
 Brief help.
+.Sh DESCRIPTION
+Creates a number of character devices like
+.Qo /dev/tm1637/ Ns
+.Cm n Qc , wired to
+.Ar scl
+and
+.Ar sda
+pins.
+.Sh EXAMPLES
+Display a string...
+.Bl -bullet -compact
+
+.It
+with a colon:
+
+.Dl % echo -n Qo 20:15 Qc > /dev/tm1637/0
+
+.It
+without a colon:
+
+.Dl % echo -n Qo 20 15 Qc > /dev/tm1637/0
+
+.It
+right aligned number:
+
+.Dl % echo -n Qo 15 Qc > /dev/tm1637/0
+.El
+
+Manage the display with octal commands
+.Bl -bullet -compact
+
+.It
+Turn the display off:
+
+.Dl % printf Qo \e200 Qc > /dev/tm1637/0
+
+.It 
+Set a brightness level to 3:
+
+.Dl % printf Qo \e213 Qc > /dev/tm1637/0
+
+.It
+Write a second digit '1' followed by a colon:
+
+.Dl % printf Qo \e104\e301\e206 Qc > /dev/tm1637/0
+.El
+
+The same as above but with hexadecimal commands:
+
+.Bl -bullet -compact
+.Dl % printf $ Ns Qo \ex80 Qc > /dev/tm1637/0
+
+.Dl % printf $ Ns Qo \ex8b Qc > /dev/tm1637/0
+
+.Dl % printf $ Ns Qo \ex44\exc1\ex86 Qc > /dev/tm1637/0
+.El
+
+(See a tm1637 datasheet for commands description)
+
 .Sh SEE ALSO
 .Xr cuse 3 ,
 .Xr tm1637ctl 1
