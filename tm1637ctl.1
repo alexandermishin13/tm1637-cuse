@@ -59,7 +59,20 @@ is a simple utility to set brightness level and turn on and off the display.
 It can be used for manage the display by other program or script (as
 .Xr cron 8
 job or
-.Xr bh1750-daemon 8 Ns )
+.Xr bh1750-daemon 8 Ns ).
+
+All this can be done by sending a string to the device containing the required
+command, for example:
+
+.Dl % printf $ Ns Qo \ex8b Qc > /dev/tm1637/0
+
+The
+.Nm
+is intended for those cases when the software for executing these commands is
+limited in the use of "bad characters" such as "&", "|", ";" (See
+.Xr wordexp 3
+.Ar RETURN VALUES )
+
 .Sh SEE ALSO
 .Xr tm1637 4 ,
 .Xr tm1637d 8 ,
