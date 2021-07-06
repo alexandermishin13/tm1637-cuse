@@ -21,12 +21,12 @@ display bonded to it:
 - "----";
 - "    ";
 - "15".
-```
+```shell
 echo "1234" > /dev/tm1637/0
 ```
 
 It can undestand a command string like:
-```
+```shell
 printf $"\x80" > /dev/tm1637/0
 printf $"\x8b" > /dev/tm1637/0
 printf $"\x44\xc1\x86" > /dev/tm1637/0
@@ -36,7 +36,7 @@ printf $"\x40\xc0\x06\x86\x06\x06" > /dev/tm1637/0
 
 Also it support ```ioctl``` calls defined in ```/usr/local/include/tm1637d.h```
 as:
-```
+```c
 #define TM1637IOC_CLEAR			_IO('T', 1)
 #define TM1637IOC_OFF			_IO('T', 2)
 #define TM1637IOC_ON			_IO('T', 3)
