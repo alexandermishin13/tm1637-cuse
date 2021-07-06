@@ -30,7 +30,7 @@ It can undestand a command string like:
 printf $"\x80" > /dev/tm1637/0
 printf $"\x8b" > /dev/tm1637/0
 printf $"\x44\xc1\x86" > /dev/tm1637/0
-printf $"\x44\xc0\x06\x86\x06\x06" > /dev/tm1637/0
+printf $"\x40\xc0\x06\x86\x06\x06" > /dev/tm1637/0
 ```
 (See a tm1637 chip datasheet for construct a command string)
 
