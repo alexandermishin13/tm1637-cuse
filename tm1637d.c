@@ -117,7 +117,7 @@ static void bb_send_start(struct tm1637_dev_t *);
 static void bb_send_stop(struct tm1637_dev_t *);
 static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
 
-static int digit_convert(struct tm1637_buf_t *, const unsigned char, const int);
+static int digit_convert(uint8_t *, const unsigned char);
 static int buffer_convert(struct tm1637_buf_t *);
 
 static void tm1637_display_on(struct tm1637_dev_t *);
@@ -341,14 +341,14 @@ is_raw_command(struct tm1637_dev_t *tmd)
 }
 
 static int
-digit_convert(struct tm1637_buf_t *buf, const unsigned char c, const int p)
+digit_convert(uint8_t *code, const unsigned char c)
 {
     switch (c) {
     case ' ':
-	buf->codes[p] = CHR_SPACE;
+	*code = CHR_SPACE;
 	break;
     case '-':
-	buf->codes[p] = CHR_GYPHEN;
+	*code = CHR_GYPHEN;
 	break;
     case ':':
 	return (-1);
@@ -357,7 +357,7 @@ digit_convert(struct tm1637_buf_t *buf, const unsigned char c, const int p)
 	break; // skip a digit position
     default:
 	if ((c >= '0') && (c <= '9'))
-	    buf->codes[p] = char_code[c&0x0f];
+	    *code = char_code[c&0x0f];
     }
 
     return (0);
@@ -384,7 +384,7 @@ buffer_convert(struct tm1637_buf_t *buf)
 		    return (-1);
 	    }
 
-	    if (digit_convert(buf, buf->text[i++], p))
+	    if (digit_convert(&buf->codes[p], buf->text[i++]))
 		return (-1);
 	} while (++p < MAX_DIGITS);
     }
@@ -396,7 +396,7 @@ buffer_convert(struct tm1637_buf_t *buf)
 	    return (-1);
 
 	while (i-- > 0)
-	    if (digit_convert(buf, buf->text[i], --p) < 0)
+	    if (digit_convert(&buf->codes[--p], buf->text[i]) < 0)
 		return (-1);
     }
 
