@@ -35,6 +35,7 @@
 #include <err.h>
 #include <errno.h>
 #include <sysexits.h>
+#include <pthread.h>
 
 #include <libgpio.h>
 #include <cuse.h>
@@ -99,10 +100,14 @@ struct tm1637_dev_t {
     uid_t			 uid;
     gid_t			 gid;
     int				 perm;
+    pthread_mutex_t		 lock;
     uint8_t			 brightness;
     bool			 on;
 
     SLIST_ENTRY(tm1637_dev_t)	 next;
+
+#define	TM1637_LOCK(s)		pthread_mutex_lock(&(s)->lock)
+#define	TM1637_UNLOCK(s)	pthread_mutex_unlock(&(s)->lock)
 };
 
 SLIST_HEAD(tm1637_list, tm1637_dev_t) tm1637_head = SLIST_HEAD_INITIALIZER(tm1637_head);;
@@ -167,6 +172,8 @@ tm1637_termination(int signum)
 	/* Clear and turn a display off */
 	tm1637_display_blank(tmd);
 	tm1637_display_off(tmd);
+
+	pthread_mutex_destroy(&tmd->lock);
 
 	/* Destroy /dev/tm1637* one by one */
 	cuse_dev_destroy(tmd->pdev);
@@ -542,9 +549,13 @@ tm1637_set_clock(struct tm1637_dev_t *tmd, const struct tm1637_clock_t clock)
 static void
 bb_send_command(struct tm1637_dev_t *tmd, const uint8_t cmd)
 {
+    TM1637_LOCK(tmd);
+
     bb_send_start(tmd);
     bb_send_byte(tmd, cmd);
     bb_send_stop(tmd);
+
+    TM1637_UNLOCK(tmd);
 }
 
 /*
@@ -558,12 +569,18 @@ bb_send_data1(struct tm1637_dev_t *tmd, const size_t pos)
     uint8_t data = tmd->buffer.codes[pos];
 
     if (tmd->on) {
-	bb_send_command(tmd, ADDR_FIXED);
+	TM1637_LOCK(tmd);
+
+	bb_send_start(tmd);
+	bb_send_byte(tmd, ADDR_FIXED);
+	bb_send_stop(tmd);
 
 	bb_send_start(tmd);
 	bb_send_byte(tmd, addr);
 	bb_send_byte(tmd, data);
 	bb_send_stop(tmd);
+
+	TM1637_UNLOCK(tmd);
     }
 }
 
@@ -579,13 +596,19 @@ bb_send_data(struct tm1637_dev_t *tmd, size_t pos, const size_t stop)
     uint8_t *codes = &tmd->buffer.codes[0];
 
     if (tmd->on) {
-	bb_send_command(tmd, ADDR_AUTO);
+	TM1637_LOCK(tmd);
+
+	bb_send_start(tmd);
+	bb_send_byte(tmd, ADDR_AUTO);
+	bb_send_stop(tmd);
 
 	bb_send_start(tmd);
 	bb_send_byte(tmd, addr);
 	for( ;pos < stop; pos++)
 	    bb_send_byte(tmd, codes[pos]);
 	bb_send_stop(tmd);
+
+	TM1637_UNLOCK(tmd);
     }
 }
 
@@ -757,6 +780,9 @@ main(int argc, char **argv)
     /* Create devices and initialize them */
     SLIST_FOREACH(tmd, &tm1637_head, next) {
 	tm1637_create(tmd);
+
+	if (pthread_mutex_init(&tmd->lock, NULL))
+	    tm1637_errx(1, "pthread_mutex_init failed: %m");
 
 	/* Prepare sda- and sclpins to send data */
 	gpio_pin_output(gpio_handle, tmd->sdapin);

@@ -18,7 +18,7 @@ MAN_tm1637d=		tm1637d.8
 MAN_tm1637ctl=		tm1637ctl.1
 MANDIR=			${PREFIX}/man/man
 
-LDADD_tm1637d=		-L/usr/local/lib -lutil -lgpio -lcuse
+LDADD_tm1637d=		-L/usr/local/lib -lutil -lgpio -lcuse -lpthread
 LDADD_tm1637ctl=	-L/usr/local/lib
 
 uninstall:
