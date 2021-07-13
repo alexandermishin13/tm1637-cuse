@@ -251,11 +251,11 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (error);
 
     if ((is_raw_command(tmd)) == 0)
-	return (0);
+	return (len);
 
     if (buffer_convert(buf) == 0) {
 	bb_send_data(tmd, 0, MAX_DIGITS);
-	return (0);
+	return (len);
     }
 
     return (CUSE_ERR_INVALID);
