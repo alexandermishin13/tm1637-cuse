@@ -365,6 +365,8 @@ digit_convert(uint8_t *code, const unsigned char c)
     default:
 	if ((c >= '0') && (c <= '9'))
 	    *code = char_code[c&0x0f];
+	else
+	    return (-1);
     }
 
     return (0);
@@ -387,7 +389,9 @@ buffer_convert(struct tm1637_buf_t *buf)
 		if (c == ':')
 		    buf->codes[1] |= 0x80;
 		else
-		if (c != ' ')
+		if (c == ' ')
+		    buf->codes[1] &= 0x7f;
+		else
 		    return (-1);
 	    }
 
