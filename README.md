@@ -17,14 +17,13 @@ display connected to them.
 
 You can simply send a string from a shell to the device for output it onto the
 display bonded to it:
-- "12:30";
-- "12 30";
-- "##:##";
-- "## ##";
-- "1234";
-- "----";
-- "&nbsp;&nbsp;&nbsp;&nbsp;";
-- "15".
+- `12:30`;
+- `12 30`;
+- `##:##`;
+- `## ##`;
+- `1234`;
+- `----`;
+- `    `.
 ```shell
 % echo "1234" > /dev/tm1637/0
 ```
