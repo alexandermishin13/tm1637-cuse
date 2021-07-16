@@ -351,17 +351,14 @@ static int
 digit_convert(uint8_t *code, const unsigned char c)
 {
     switch (c) {
+    case '#':
+	break; // skip a digit position
     case ' ':
 	*code = CHR_SPACE;
 	break;
     case '-':
 	*code = CHR_GYPHEN;
 	break;
-    case ':':
-	return (-1);
-	//break;
-    case '#':
-	break; // skip a digit position
     default:
 	if ((c >= '0') && (c <= '9'))
 	    *code = char_code[c&0x0f];
@@ -406,8 +403,9 @@ buffer_convert(struct tm1637_buf_t *buf)
 	if (i <= 0)
 	    return (-1);
 
-	while (i-- > 0)
-	    if (digit_convert(&buf->codes[--p], buf->text[i]) < 0)
+	/* Revers order for right aligned result */
+	while (i > 0)
+	    if (digit_convert(&buf->codes[--p], buf->text[--i]) < 0)
 		return (-1);
     }
 
