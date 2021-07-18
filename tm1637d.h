@@ -29,6 +29,11 @@
 #ifndef _TM1637D_H_
 #define _TM1637D_H_
 
+#define BRIGHT_DARKEST			0
+#define BRIGHT_DARK			1
+#define BRIGHT_TYPICAL			2
+#define BRIGHT_BRIGHTEST		7
+
 #define ADDR_AUTO			0x40 // 1st byte
 #define ADDR_FIXED			0x44 // 1st byte
 #define ADDR_START			0xc0 // 2nd byte

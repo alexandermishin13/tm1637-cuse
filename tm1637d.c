@@ -43,6 +43,7 @@
 
 #include <getopt.h>
 #include <sys/queue.h>
+#include <sys/malloc.h>
 
 #include "tm1637d.h"
 
@@ -52,7 +53,6 @@
     exit(code);					\
 } while (0)
 
-#define MIN(x,y)			((x) < (y) ? (x) : (y))
 #define NUMBER_OF_GPIO_PINS		256
 
 #define CDEV_UID			0
@@ -61,14 +61,6 @@
 
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
 #define ACK_TIMEOUT			200
-
-#define MAX_DIGITS			4
-#define MAX_CHARS			MAX_DIGITS+2
-
-#define DARKEST				0
-#define BRIGHT_DARK			1
-#define BRIGHT_TYPICAL			2
-#define BRIGHTEST			7
 
 struct pidfh *pfh;
 static char *pid_file = NULL;
@@ -82,12 +74,11 @@ static const uint8_t char_code[10] = {
     CHR_5, CHR_6, CHR_7, CHR_8, CHR_9
 };
 
-/* Buffer struct */
 struct tm1637_buf_t {
-    unsigned char		 text[MAX_CHARS];
+    size_t			 number;
     size_t			 length;
-    uint8_t			 codes[MAX_DIGITS];
-    bool			 marks[MAX_DIGITS];
+    uint8_t			*codes;
+    unsigned char		*text;
 };
 
 /* tm1637_dev device struct */
@@ -125,6 +116,11 @@ static void bb_send_byte(struct tm1637_dev_t *, const uint8_t);
 static int digit_convert(uint8_t *, const unsigned char);
 static int buffer_convert(struct tm1637_buf_t *);
 
+static struct tm1637_dev_t *
+tm1637_register(gpio_pin_t, gpio_pin_t, uint8_t, uint8_t);
+static struct tm1637_dev_t *
+tm1637_create(struct tm1637_dev_t *);
+
 static void tm1637_display_on(struct tm1637_dev_t *);
 static void tm1637_display_off(struct tm1637_dev_t *);
 static void tm1637_display_blank(struct tm1637_dev_t *);
@@ -147,14 +143,18 @@ static struct cuse_methods tm1637_cuse_methods = {
 static void
 usage()
 {
-    fprintf(stderr, "usage: %s -d code=<code>,pin=<number> ... "
+    fprintf(stderr, "usage: %s -d scl=<pin>,sda=<pin>[,brightness=<level>][,digits=<4|6>] ... "
 	"[-b] [-h]\n\n",
 	getprogname());
     fprintf(stderr,
-    "Optioqns:\n"
+    "Options:\n"
 	"    -d, --device scl=<pin>,sda=<pin>\n"
-	"                        Create a device with defined 'scl' and 'sda'\n"
+	"                        Creates a device with defined 'scl' and 'sda'\n"
 	"                        pins. Can be used multiple times;\n"
+	"                 brightness=<level>\n"
+	"                        Optionally sets a level of brightness. Default: 2\n"
+	"                 digits=<number>\n"
+	"                        Optionally sets a number of digits. Default: 4\n"
 	"    -b,                 Run in background as a daemon;\n"
 	"    -h, --help          Print this help.\n"
     );
@@ -180,6 +180,8 @@ tm1637_termination(int signum)
 	syslog(LOG_INFO, "Destroyed /dev/%s/%d\n", TM1637_CUSE_DEFAULT_DEVNAME, tmd->cuse_id);
 
 	SLIST_REMOVE_HEAD(&tm1637_head, next);
+	free(tmd->buffer.text);
+	free(tmd->buffer.codes);
 	free(tmd);
     }
 
@@ -236,13 +238,13 @@ static int
 tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int len)
 {
     struct tm1637_dev_t *tmd = cuse_dev_get_priv0(cdev);
+    struct tm1637_buf_t *buf = &tmd->buffer;
     int error;
 
-    if ((len == 0) || (len > MAX_CHARS))
+    if ((len == 0) || (len > (buf->number + 2)))
 	return (CUSE_ERR_INVALID);
 
 //    TM1637_UNLOCK(ec);
-    struct tm1637_buf_t *buf = &tmd->buffer;
     error = cuse_copy_in(peer_ptr, buf->text, len);
     buf->length = len;
 //    TM1637_LOCK(ec);
@@ -254,7 +256,7 @@ tm1637_cuse_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int l
 	return (len);
 
     if (buffer_convert(buf) == 0) {
-	bb_send_data(tmd, 0, MAX_DIGITS);
+	bb_send_data(tmd, 0, buf->number);
 	return (len);
     }
 
@@ -303,28 +305,29 @@ tm1637_cuse_ioctl(struct cuse_dev *cdev, int fflags,
 static uint8_t
 is_raw_command(struct tm1637_dev_t *tmd)
 {
-    size_t start, stop, length = tmd->buffer.length;
-    uint8_t *text = &tmd->buffer.text[0];
+    struct tm1637_buf_t *buf = &tmd->buffer;
+    size_t start, stop, length = buf->length;
+    uint8_t *text = &buf->text[0];
     uint8_t tmp;
 
     switch (text[0]) {
     /* Send one byte at a fixed position */
     case ADDR_FIXED:
 	if ((length < 3) ||
-	   ((tmp = text[1]^ADDR_START) >= MAX_DIGITS))
+	   ((tmp = text[1]^ADDR_START) >= buf->number))
 	    return (-1);
 
 	tmd->buffer.codes[tmp] = text[2];
 	bb_send_data1(tmd, tmp);
 	break;
-    /* Send up to 4 bytes at an autoincremented position */
+    /* Send up to 6 bytes at an autoincremented position */
     case ADDR_AUTO:
 	if ((length < 3) ||
-	   ((tmp = text[1]^ADDR_START) >= MAX_DIGITS))
+	   ((tmp = text[1]^ADDR_START) >= buf->number))
 	    return (-1);
 
 	start = tmp;
-	stop = MIN(length-2, MAX_DIGITS);
+	stop = MIN(length-2, buf->number);
 	for (size_t i=2; tmp<stop; tmp++)
 	    tmd->buffer.codes[tmp] = text[i++];
 
@@ -336,7 +339,7 @@ is_raw_command(struct tm1637_dev_t *tmd)
 	break;
     default:
 	/* Send one byte command to light display with the bright level 0..7 */
-	if ((tmp = (text[0]^DISPLAY_CTRL)) <= BRIGHTEST) {
+	if ((tmp = (text[0]^DISPLAY_CTRL)) <= BRIGHT_BRIGHTEST) {
 	    tmd->brightness = tmp;
 	    tm1637_display_on(tmd);
 	    break;
@@ -352,6 +355,7 @@ digit_convert(uint8_t *code, const unsigned char c)
 {
     switch (c) {
     case '#':
+	*code &= 0x7f;
 	break; // skip a digit position
     case ' ':
 	*code = CHR_SPACE;
@@ -375,7 +379,7 @@ buffer_convert(struct tm1637_buf_t *buf)
 {
     int i, p;
 
-    if (buf->length == 5) {
+    if ((buf->number ==4) && (buf->length) == 5) {
 	i = 0;
 	p = 0;
 
@@ -394,11 +398,46 @@ buffer_convert(struct tm1637_buf_t *buf)
 
 	    if (digit_convert(&buf->codes[p], buf->text[i++]))
 		return (-1);
-	} while (++p < MAX_DIGITS);
+	} while (++p < buf->number);
+    }
+    else
+    if (buf->number == 6) {
+	i = buf->length;
+	p = 2;
+
+	if (i <= 0)
+	    return (-1);
+
+	/* Revers order for right aligned result */
+	while (i > 0) {
+	    unsigned char c;
+
+	    if (++p >= buf->number)
+		p = 0;
+
+	    c = buf->text[--i];
+	    if (c == '.') {
+		/* If a dot check for buffer is not empty,
+		 * get a number followed by the dot (backward, of course),
+		 * and set its eighth bit to light the dot segment
+		 */
+		if (i <= 0)
+		    return (-1);
+
+		c = buf->text[--i];
+		if (digit_convert(&buf->codes[p], c) < 0)
+		    return (-1);
+
+		buf->codes[p] |= 0x80;
+	    }
+	    else
+		if (digit_convert(&buf->codes[p], c) < 0)
+		    return (-1);
+	}
     }
     else {
 	i = buf->length;
-	p = MAX_DIGITS;
+	p = buf->number;
 
 	if (i <= 0)
 	    return (-1);
@@ -469,14 +508,14 @@ bb_send_byte(struct tm1637_dev_t *tmd, const uint8_t data)
 static void
 tm1637_display_blank(struct tm1637_dev_t *tmd)
 {
-    size_t position = MAX_DIGITS;
+    size_t position = tmd->buffer.number;
     uint8_t *codes = &tmd->buffer.codes[0];
 
     // Display all blanks
     while(--position)
 	codes[position] = CHR_SPACE;
 
-    bb_send_data(tmd, 0, MAX_DIGITS);
+    bb_send_data(tmd, 0, tmd->buffer.number);
 }
 
 /* Off the display */
@@ -495,7 +534,7 @@ tm1637_display_on(struct tm1637_dev_t *tmd)
     if (!tmd->on) {
 	/* First set flag for send data correctly */
 	tmd->on = true;
-	bb_send_data(tmd, 0, MAX_DIGITS);
+	bb_send_data(tmd, 0, tmd->buffer.number);
     }
     /* Light the display anyway */
     bb_send_command(tmd, tmd->brightness|DISPLAY_CTRL);
@@ -509,7 +548,7 @@ tm1637_set_brightness(struct tm1637_dev_t *tmd, const uint8_t brightness)
 {
     /* If brightness is really changed */
     if ((brightness != tmd->brightness) &&
-        (brightness <= BRIGHTEST))
+        (brightness <= BRIGHT_BRIGHTEST))
     {
 	tmd->brightness = brightness;
 	/* Only change a variable if a display is not on */
@@ -541,7 +580,7 @@ tm1637_set_clock(struct tm1637_dev_t *tmd, const struct tm1637_clock_t clock)
     if (clock.tm_colon)
 	codes[1] |= 0x80;
 
-    bb_send_data(tmd, 0, MAX_DIGITS);
+    bb_send_data(tmd, 0, tmd->buffer.number);
 }
 
 /*
@@ -645,7 +684,7 @@ daemonize(void)
 }
 
 static struct tm1637_dev_t *
-tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness)
+tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness, uint8_t digits)
 {
     struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
 
@@ -657,6 +696,11 @@ tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness)
 	tmd->gid = CDEV_UID;
 	tmd->perm = CDEV_MODE;
 	tmd->brightness = brightness;
+
+	/* Create a buffer struct */
+	tmd->buffer.number = digits;
+	tmd->buffer.codes = (uint8_t *)malloc(tmd->buffer.number);
+	tmd->buffer.text = (unsigned char *)malloc(tmd->buffer.number + 2);
 
 	/* Register my tm1637 specimen*/
 	SLIST_INSERT_HEAD(&tm1637_head, tmd, next);
@@ -698,7 +742,7 @@ int
 main(int argc, char **argv)
 {
     int ch, long_index = 0;
-    size_t scl, sda, brightness = BRIGHT_TYPICAL;
+    size_t scl, sda, brightness, digits;
     extern char *optarg, *suboptarg;
     char *options, *value, *end;
     struct tm1637_dev_t *tmd;
@@ -710,6 +754,8 @@ main(int argc, char **argv)
 			"sda",
 #define BRIGHTNESS	2
 			"brightness",
+#define DIGITS		3
+			"digits",
 	NULL
     };
 
@@ -725,8 +771,11 @@ main(int argc, char **argv)
 	switch(ch) {
 	case 'b':
 	    background = true;
+	    
 	    break;
 	case 'd':
+	    brightness = BRIGHT_TYPICAL;
+	    digits = 4;
 	    options = optarg;
 	    while (*options) {
 		switch(getsubopt(&options, subopts, &value)) {
@@ -747,9 +796,18 @@ main(int argc, char **argv)
 		case BRIGHTNESS:
 		    if (value) {
 			brightness = strtoul(value, &end, 0);
-			if (brightness > BRIGHTEST)
+			if (brightness > BRIGHT_BRIGHTEST)
 			    tm1637_errx(EXIT_FAILURE, "too big value for brightness");
 		    }
+		    break;
+		case DIGITS:
+		    if (value) {
+			digits = strtoul(value, &end, 0);
+			if ((digits != 4) &&
+			    (digits != 6))
+				tm1637_errx(EXIT_FAILURE, "only tm1637 4 or 6 digits is known");
+		    }
+		    break;
 		case -1:
 		    if (suboptarg)
 			tm1637_errx(1, "illegal sub option %s", suboptarg);
@@ -761,7 +819,7 @@ main(int argc, char **argv)
 	    if (scl == sda)
 		tm1637_errx(EXIT_FAILURE, "Pins 'scl' and 'sda' cannot be same");
 	    /* Create tm1637 specimens */
-	    tmd = tm1637_register(scl, sda, brightness);
+	    tmd = tm1637_register(scl, sda, brightness, digits);
 	    break;
 	case 'h':
 	    /* FALLTHROUGH */

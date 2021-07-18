@@ -49,10 +49,16 @@ and
 .Ar sda
 device pins to send data to the display, where
 .Ar pin
-is a pin number. Optionally a brightness
+is a pin number.
+
+Optionally a brightness
 .Ar level
 can be defined, an integer from 0 to 7 is acceptable
 (Default is 2).
+
+Also a
+.Ar number
+of digits can be set to 4 or 6 (Default is 4).
 
 The
 .Fl d
@@ -72,14 +78,24 @@ Display a string...
 .Bl -bullet -compact
 
 .It
-with a colon:
+with a colon (if You have a display with a colon):
 
 .Dl % echo -n Qo 20:15 Qc > /dev/tm1637/0
+.Dl % echo -n Qo ##:## Qc > /dev/tm1637/0
 
 .It
 without a colon:
 
 .Dl % echo -n Qo 20 15 Qc > /dev/tm1637/0
+.Dl % echo -n Qo 2015 Qc > /dev/tm1637/0
+.Dl % echo -n Qo #### Qc > /dev/tm1637/0
+
+.It
+with a dots (if You have a display with a decimal dots).
+Up to two dots can be used.
+
+.Dl % echo -n Qo 3.14 Qc > /dev/tm1637/0
+.Dl % echo -n Qo 01.01.21 Qc > /dev/tm1637/0
 
 .It
 right aligned number:
