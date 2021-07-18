@@ -84,8 +84,8 @@ service:
 % service tm1637d start
 ```
 
-You can add the following line to the file ***/boot/loader.conf*** so
-that the module is loaded automatically at system startup:
+You can add the following line to the file ***/boot/loader.conf*** in
+order for the module to load automatically at system startup:
 ```
 cuse_load="YES"
 ```
