@@ -1,6 +1,6 @@
 # tm1637-cuse
 
-Cuse based userland device driver for tm1637 display.
+Cuse based userland device driver for tm1637 4 or 6 digits displays.
 
 ## About
 The ```cuse```-based driver is an alternative one to a kernel driver
@@ -22,8 +22,11 @@ display bonded to it:
 - `##:##`;
 - `## ##`;
 - `1234`;
+- `3.14` (If You have a decimal dots type of a display);
+- `01.01.21` (If You have a 6 digits display);
 - `----`;
 - `    `.
+
 ```shell
 % echo "1234" > /dev/tm1637/0
 ```
@@ -52,6 +55,47 @@ struct tm1637_clock_t {
 #define TM1637IOC_SET_BRIGHTNESS	_IOW('T', 11, uint8_t)
 #define TM1637IOC_SET_CLOCKPOINT	_IOW('T', 12, uint8_t)
 #define TM1637IOC_SET_CLOCK		_IOW('T', 14, struct tm1637_clock_t)
+```
+
+## Installation
+
+You do not need a kernel sources for make a ```cuse```-based driver. It is
+just a daemon You can run as a system service after it is installed.
+
+Clone that ```git``` project to ***~/src/*** directory, change a current
+directory to the projects new one, build and install the daemon.
+
+```shell
+% mkdir -p ~/src
+% cd ~/src
+% git clone https://gitlab.com/alexandermishin13/tm1637-cuse.git
+% cd ./tm1637-cuse
+% make
+% sudo make install
+```
+
+You can wish to copy a file ***./rc.conf.d/tm1637d.example*** to a
+file ***/usr/local/etc/rc.conf.d/tm1637/tm1637d*** and to change it to
+suit Your needs. Then load a system module ```cuse.ko``` and  run the
+service:
+
+```shell
+% kldload cuse
+% service tm1637d start
+```
+
+You can add the following line to the file ***/boot/loader.conf*** so
+that the module is loaded automatically at system startup:
+```
+cuse_load="YES"
+```
+
+One or more devices will be created into ***/dev/tm1637/*** directory.
+You can change permits to them by change a file ***/etc/devfs.rules***
+and restart a ```devfs``` service. Read about how to do it:
+
+```shell
+% man 5 devfs.rules
 ```
 
 ## Status
