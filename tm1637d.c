@@ -152,9 +152,11 @@ usage()
 	"                        Creates a device with defined 'scl' and 'sda'\n"
 	"                        pins. Can be used multiple times;\n"
 	"                 brightness=<level>\n"
-	"                        Optionally sets a level of brightness. Default: 2\n"
+	"                        Optionally sets a level of brightness as an integer\n"
+	"                        from 0 to 7. Default: 2\n"
 	"                 digits=<number>\n"
-	"                        Optionally sets a number of digits. Default: 4\n"
+	"                        Optionally sets a number of digits. 4 for a clock like\n"
+	"                        display, 6 for 6-digits one with decimals. Default: 4\n"
 	"    -b,                 Run in background as a daemon;\n"
 	"    -h, --help          Print this help.\n"
     );
@@ -761,7 +763,7 @@ main(int argc, char **argv)
 
     static struct option long_options[] = {
 	{"device", required_argument, 0, 'd' },
-	{"help",   required_argument, 0, 'h' },
+	{"help",   no_argument,       0, 'h' },
 	{0, 0, 0, 0}
     };
 
