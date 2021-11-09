@@ -391,32 +391,44 @@ digit_convert(uint8_t *code, const unsigned char c)
 static int
 buffer_convert(struct tm1637_buf_t *buf)
 {
-    int i, p;
+    const uint8_t *position = buf->position;
+    const unsigned char *text = buf->text;
+    uint8_t *codes = buf->codes;
+    int8_t n = buf->number;
+    int8_t i = buf->length;
+    int8_t p;
 
     if ((buf->number ==4) && (buf->length) == 5) {
-	i = 0;
-	p = 0;
+	unsigned char clockpoint;
+	/* tm1637 4 digits with colon. Format: clock
+	 * Reverse order for right aligned result */
+	while (n-- > 0) {
+	    p = position[n];
 
-	do {
-	    if (i == 2) {
-		unsigned char c = buf->text[i++];
+	    /* Get a clockpoint and go for a digit before */
+	    if (i == TM1637_COLON_POSITION + 1)
+		clockpoint = text[--i];
 
-		if (c == ':')
-		    buf->codes[1] |= 0x80;
-		else
-		if (c == ' ')
-		    buf->codes[1] &= 0x7f;
-		else
-		    return (-1);
-	    }
-
-	    if (digit_convert(&buf->codes[p], buf->text[i++]))
+	    if (digit_convert(&codes[p], text[--i]) < 0)
 		return (-1);
-	} while (++p < buf->number);
+	}
+
+	if (clockpoint == ':') {
+	    /* Set a dot segment */
+	    p = position[TM1637_COLON_POSITION - 1];
+	    codes[p] |= 0x80;
+	}
+	else
+	if (clockpoint == ' ') {
+	    /* Clear a dot segment */
+	    p = position[TM1637_COLON_POSITION - 1];
+	    codes[p] &= 0x7f;
+	}
+	else
+	    return (-1);
     }
     else
     if (buf->number == 6) {
-	i = buf->length;
 	p = 2;
 
 	if (i <= 0)
@@ -450,7 +462,6 @@ buffer_convert(struct tm1637_buf_t *buf)
 	}
     }
     else {
-	i = buf->length;
 	p = buf->number;
 
 	if (i <= 0)
