@@ -80,6 +80,7 @@ struct tm1637_buf_t {
     const uint8_t		*position;
     uint8_t			*codes;
     unsigned char		*text;
+    bool			 clocklike;
 };
 
 /* tm1637_dev device struct */
@@ -118,7 +119,7 @@ static int digit_convert(uint8_t *, const unsigned char);
 static int buffer_convert(struct tm1637_buf_t *);
 
 static struct tm1637_dev_t *
-tm1637_register(gpio_pin_t, gpio_pin_t, uint8_t, uint8_t);
+tm1637_register(gpio_pin_t, gpio_pin_t, const uint8_t, const uint8_t, const bool);
 static struct tm1637_dev_t *
 tm1637_create(struct tm1637_dev_t *);
 
@@ -398,7 +399,59 @@ buffer_convert(struct tm1637_buf_t *buf)
     int8_t i = buf->length;
     int8_t p;
 
-    if ((buf->number ==4) && (buf->length) == 5) {
+    if (!buf->clocklike) {
+	/* tm1637 with decimals
+	 * Reverse order for right aligned result */
+	while (n-- > 0) {
+	    unsigned char c;
+
+	    p = position[n];
+
+	    /* When the text buffer is cleared before the digits run out,
+	     * a leading space will be displayed.
+	     */
+	    if (i <= 0) {
+		codes[p] = CHR_SPACE;
+		continue;
+	    }
+
+	    c = text[--i];
+	    if (c == '.') {
+		/* If a dot check for buffer is not empty,
+		 * get a number followed by the dot (backward, of course),
+		 * and set its eighth bit to light the dot segment
+		 */
+		if ((i <= 0) ||
+		    (digit_convert(&codes[p], text[--i]) < 0))
+			return (-1);
+		/* Set a dot segment */
+		codes[p] |= 0x80;
+	    }
+	    else
+		if (digit_convert(&codes[p], c) < 0)
+		    return (-1);
+
+	}
+    }
+    else
+    if(buf->length <= buf->number) {
+	/* tm1637 4 digits with colon. Format: integer
+	 * Reverse order for right aligned result */
+	while (n-- > 0) {
+	    p = position[n];
+
+	    /* When the text buffer is cleared before the digits run out,
+	     * a leading space will be displayed.
+	     */
+	    if (i <= 0)
+		codes[p] = CHR_SPACE;
+	    else
+		if (digit_convert(&codes[p], text[--i]) < 0)
+		    return (-1);
+	}
+    }
+    else
+    if (buf->length == 5) {
 	unsigned char clockpoint;
 	/* tm1637 4 digits with colon. Format: clock
 	 * Reverse order for right aligned result */
@@ -427,51 +480,10 @@ buffer_convert(struct tm1637_buf_t *buf)
 	else
 	    return (-1);
     }
-    else
-    if (buf->number == 6) {
-	p = 2;
 
-	if (i <= 0)
-	    return (-1);
-
-	/* Revers order for right aligned result */
-	while (i > 0) {
-	    unsigned char c;
-
-	    if (++p >= buf->number)
-		p = 0;
-
-	    c = buf->text[--i];
-	    if (c == '.') {
-		/* If a dot check for buffer is not empty,
-		 * get a number followed by the dot (backward, of course),
-		 * and set its eighth bit to light the dot segment
-		 */
-		if (i <= 0)
-		    return (-1);
-
-		c = buf->text[--i];
-		if (digit_convert(&buf->codes[p], c) < 0)
-		    return (-1);
-
-		buf->codes[p] |= 0x80;
-	    }
-	    else
-		if (digit_convert(&buf->codes[p], c) < 0)
-		    return (-1);
-	}
-    }
-    else {
-	p = buf->number;
-
-	if (i <= 0)
-	    return (-1);
-
-	/* Revers order for right aligned result */
-	while (i > 0)
-	    if (digit_convert(&buf->codes[--p], buf->text[--i]) < 0)
-		return (-1);
-    }
+    /* The text buffer must be empty now */
+    if (i > 0)
+	return (-1);
 
     return (0);
 }
@@ -733,7 +745,7 @@ daemonize(void)
 }
 
 static struct tm1637_dev_t *
-tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness, uint8_t digits)
+tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, const uint8_t brightness, const uint8_t digits, const bool clocklike)
 {
     struct tm1637_dev_t *tmd = (struct tm1637_dev_t *)malloc(sizeof(struct tm1637_dev_t));
 
@@ -755,6 +767,7 @@ tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness, uint8_
 	case 6:
 	    tmd->buffer.position = dig6pos;
 	}
+	tmd->buffer.clocklike = clocklike;
 	tmd->buffer.codes = (uint8_t *)malloc(tmd->buffer.number);
 	tmd->buffer.text = (unsigned char *)malloc(tmd->buffer.number + 2);
 
@@ -798,6 +811,7 @@ int
 main(int argc, char **argv)
 {
     int ch, long_index = 0;
+    bool clocklike = false;
     size_t scl, sda, brightness, digits;
     extern char *optarg, *suboptarg;
     char *options, *value, *end;
@@ -812,6 +826,8 @@ main(int argc, char **argv)
 			"brightness",
 #define DIGITS		3
 			"digits",
+#define CLOCK		4
+			"clock",
 	NULL
     };
 
@@ -864,6 +880,9 @@ main(int argc, char **argv)
 				tm1637_errx(EXIT_FAILURE, "only tm1637 4 or 6 digits is known");
 		    }
 		    break;
+		case CLOCK:
+		    clocklike = true;
+		    break;
 		case -1:
 		    if (suboptarg)
 			tm1637_errx(1, "illegal sub option %s", suboptarg);
@@ -875,7 +894,7 @@ main(int argc, char **argv)
 	    if (scl == sda)
 		tm1637_errx(EXIT_FAILURE, "Pins 'scl' and 'sda' cannot be same");
 	    /* Create tm1637 specimens */
-	    tmd = tm1637_register(scl, sda, brightness, digits);
+	    tmd = tm1637_register(scl, sda, brightness, digits, clocklike);
 	    break;
 	case 'h':
 	    /* FALLTHROUGH */

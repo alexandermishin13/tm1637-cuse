@@ -1,6 +1,8 @@
 tm1637d_enable="YES"
-tm1637d_profiles="clock"
-tm1637d_clock_scl=26
-tm1637d_clock_sda=29
-#tm1637d_clock_digits=4
-#tm1637d_clock_brightness=2
+tm1637d_profiles="disp1"
+tm1637d_disp1_scl=26
+tm1637d_disp1_sda=29
+#tm1637d_disp1_digits=4
+#tm1637d_disp1_brightness=2
+#tm1637d_disp1_digits=4
+#tm1637d_disp_type="clock"

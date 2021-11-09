@@ -46,12 +46,19 @@ if [ -n "${tm1637d_profiles}" ]; then
 		eval _scl=\${tm1637d_${profile}_scl:-"${tm1637d_scl}"}
 		eval _sda=\${tm1637d_${profile}_sda:-"${tm1637d_sda}"}
 		eval _digits=\${tm1637d_${profile}_digits:-"${tm1637d_digits}"}
+		eval _type=\${tm1637d_${profile}_type:-"${tm1637d_type}"}
 		_device="scl=${_scl},sda=${_sda},digits=${_digits}"
+		if [ ${_type} == "clock" ]; then
+			_device="${_device},clock"
+		fi
 		echo ${_device}
 		tm1637d_device_args="${tm1637d_device_args} -d ${_device}"
 	done
 else
 	tm1637d_device_args="-d scl=${tm1637d_scl},sda=${tm1637d_sda},digits=${tm1637d_digits}"
+	if [ ${tm1637d_type} == "clock" ]; then
+		tm1637d_device_args="${tm1637d_device_args},clock"
+	fi
 fi
 
 command=${tm1637d_bin}

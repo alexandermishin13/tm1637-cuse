@@ -30,8 +30,10 @@
 .Nd Cuse based tm1637 display userland driver.
 .Sh SYNOPSIS
 .Nm
-.Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns
-.Oo Ar brightness Ns = Ns Ar level
+.Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns
+.Oo , Ns Ar brightness Ns = Ns Ar level Oc Ns
+.Oo , Ns Ar digits Ns = Ns Ar number Oc Ns
+.Oo , Ns Ar clock
 .Oc ...
 .Sh OPTIONS
 The
@@ -42,7 +44,7 @@ supports the following options:
 Daemonize the
 .Nm
 after running;
-.It Fl d , Ic --device Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns , Ns Op Ar brightness Ns = Ns Ar level
+.It Fl d , Ic --device Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns Oo , Ns Ar brightness Ns = Ns Ar level Oc Ns Oo , Ns Ar digits Ns = Ns Ar number Oc Ns Oo , Ns Ar clock Oc
 Defines  the
 .Ar scl
 and
@@ -51,14 +53,20 @@ device pins to send data to the display, where
 .Ar pin
 is a pin number.
 
-Optionally a brightness
-.Ar level
-can be defined, an integer from 0 to 7 is acceptable
-(Default is 2).
-
-Also a
-.Ar number
-of digits can be set to 4 or 6 (Default is 4).
+Optionally, can be set:
+.Bl
+.It
+A level of
+.Ar brightness
+.Dl can be defined, an integer from 0 to 7 is acceptable (Default is 2);
+.It
+A number of
+.Ar digits
+.Dl can be set to 4 or 6 (Default is 4);
+A keyword
+.Ar clock
+.Dl can be used to set a clock type of the display (Default is a type with decimals).
+.El
 
 The
 .Fl d
@@ -111,7 +119,7 @@ Turn the display off:
 
 .Dl % printf Qo \e200 Qc > /dev/tm1637/0
 
-.It 
+.It
 Set a brightness level to 3:
 
 .Dl % printf Qo \e213 Qc > /dev/tm1637/0
