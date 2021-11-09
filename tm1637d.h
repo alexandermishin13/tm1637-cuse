@@ -34,6 +34,8 @@
 #define BRIGHT_TYPICAL			2
 #define BRIGHT_BRIGHTEST		7
 
+#define	TM1637_COLON_POSITION		2 // position of a digit with a colon
+
 #define ADDR_AUTO			0x40 // 1st byte
 #define ADDR_FIXED			0x44 // 1st byte
 #define ADDR_START			0xc0 // 2nd byte

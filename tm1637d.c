@@ -77,6 +77,7 @@ static const uint8_t char_code[10] = {
 struct tm1637_buf_t {
     size_t			 number;
     size_t			 length;
+    const uint8_t		*position;
     uint8_t			*codes;
     unsigned char		*text;
 };
@@ -125,6 +126,7 @@ static void tm1637_display_on(struct tm1637_dev_t *);
 static void tm1637_display_off(struct tm1637_dev_t *);
 static void tm1637_display_blank(struct tm1637_dev_t *);
 static void tm1637_set_brightness(struct tm1637_dev_t *, const uint8_t);
+static void tm1637_set_clockpoint(struct tm1637_dev_t *, const bool);
 static void tm1637_set_clock(struct tm1637_dev_t *, const struct tm1637_clock_t);
 
 static void bb_send_command(struct tm1637_dev_t *, const uint8_t);
@@ -132,6 +134,10 @@ static void bb_send_data1(struct tm1637_dev_t *, const size_t);
 static void bb_send_data(struct tm1637_dev_t *, size_t, const size_t);
 
 static uint8_t is_raw_command(struct tm1637_dev_t *);
+
+/* Sequences of digit positions for a display type */
+static const uint8_t dig4pos[] = { 0, 1, 2, 3 };
+static const uint8_t dig6pos[] = { 2, 1, 0, 5, 4, 3 };
 
 static struct cuse_methods tm1637_cuse_methods = {
     .cm_open = tm1637_cuse_open,
@@ -289,6 +295,12 @@ tm1637_cuse_ioctl(struct cuse_dev *cdev, int fflags,
 	if (error != CUSE_ERR_NONE)
 	    break;
 	tm1637_set_brightness(tmd, brightness);
+	break;
+    case TM1637IOC_SET_CLOCKPOINT:
+	error = cuse_copy_in(peer_data, &time.tm_colon, sizeof(time.tm_colon));
+	if (error != CUSE_ERR_NONE)
+	    break;
+	tm1637_set_clockpoint(tmd, time.tm_colon);
 	break;
     case TM1637IOC_SET_CLOCK:
 	error = cuse_copy_in(peer_data, &time, sizeof(time));
@@ -560,27 +572,51 @@ tm1637_set_brightness(struct tm1637_dev_t *tmd, const uint8_t brightness)
 }
 
 /*
+ * Display or clear a clockpoint
+ */
+static void
+tm1637_set_clockpoint(struct tm1637_dev_t *tmd, const bool clockpoint)
+{
+    const uint8_t p = tmd->buffer.position[TM1637_COLON_POSITION - 1];
+
+    if (clockpoint)
+	tmd->buffer.codes[p] |= 0x80;
+    else
+	tmd->buffer.codes[p] &= 0x7f;
+
+    bb_send_data1(tmd, p);
+}
+
+/*
  * Sets time to the display
  */
 static void
 tm1637_set_clock(struct tm1637_dev_t *tmd, const struct tm1637_clock_t clock)
 {
-    int t;
-    uint8_t *codes = &tmd->buffer.codes[0];
+    const uint8_t *position = tmd->buffer.position;
+    uint8_t *codes = tmd->buffer.codes;
+    uint8_t p;
+    uint8_t t;
 
     /* Four clock digits */
     t = clock.tm_hour / 10;
-    codes[0] = char_code[t&0x0f];
+    p = position[0];
+    codes[p] = char_code[t&0x0f];
     t = clock.tm_hour % 10;
-    codes[1] = char_code[t];
+    p = position[1];
+    codes[p] = char_code[t];
     t = clock.tm_min / 10;
-    codes[2] = char_code[t&0x0f];
+    p = position[2];
+    codes[p] = char_code[t&0x0f];
     t = clock.tm_min % 10;
-    codes[3] = char_code[t];
+    p = position[3];
+    codes[p] = char_code[t];
 
     /* Clockpoint */
-    if (clock.tm_colon)
-	codes[1] |= 0x80;
+    if (clock.tm_colon) {
+    p = position[TM1637_COLON_POSITION - 1];
+	codes[p] |= 0x80;
+    }
 
     bb_send_data(tmd, 0, tmd->buffer.number);
 }
@@ -701,6 +737,13 @@ tm1637_register(gpio_pin_t sclpin, gpio_pin_t sdapin, uint8_t brightness, uint8_
 
 	/* Create a buffer struct */
 	tmd->buffer.number = digits;
+	switch(digits) {
+	case 4:
+	    tmd->buffer.position = dig4pos;
+	    break;
+	case 6:
+	    tmd->buffer.position = dig6pos;
+	}
 	tmd->buffer.codes = (uint8_t *)malloc(tmd->buffer.number);
 	tmd->buffer.text = (unsigned char *)malloc(tmd->buffer.number + 2);
 
