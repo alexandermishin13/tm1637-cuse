@@ -4,5 +4,4 @@ tm1637d_disp1_scl=26
 tm1637d_disp1_sda=29
 #tm1637d_disp1_digits=4
 #tm1637d_disp1_brightness=2
-#tm1637d_disp1_digits=4
-#tm1637d_disp_type="clock"
+#tm1637d_disp1_type="clock"

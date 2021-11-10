@@ -30,11 +30,32 @@
 .Nd Cuse based tm1637 display userland driver.
 .Sh SYNOPSIS
 .Nm
+.Oo Fl b Oc Oo Fl h Oc
 .Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns
 .Oo , Ns Ar brightness Ns = Ns Ar level Oc Ns
 .Oo , Ns Ar digits Ns = Ns Ar number Oc Ns
 .Oo , Ns Ar clock
 .Oc ...
+.Pp
+.Sh DESCRIPTION
+Creates a number of character devices named
+.Qo /dev/tm1637/ Ns Cm n Qc , connected to pins
+.Ar scl
+and
+.Ar sda .
+.Nm.
+requires the.
+.Xr cuse 3
+kernel module.
+.Pp
+To load the driver as a module at boot time, place the following line in
+.Xr loader.conf 5 :
+.Bd -literal -offset indent
+cuse_load="YES"
+.Ed
+.Pp
+To configure the service, see
+.Pa rc.conf.d/tm1637d.example .
 .Sh OPTIONS
 The
 .Nm
@@ -44,56 +65,54 @@ supports the following options:
 Daemonize the
 .Nm
 after running;
-.It Fl d , Ic --device Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns Oo , Ns Ar brightness Ns = Ns Ar level Oc Ns Oo , Ns Ar digits Ns = Ns Ar number Oc Ns Oo , Ns Ar clock Oc
-Defines  the
+.It Fl d , Ic --device
+Defines th device and set its parameters:
+.Bl
+.It
+.Ar scl Ns = Ns Ar pin , Ar sda Ns = Ns Ar pin
+.Bd -ragged -offset indent -compact
+Specifies the
 .Ar scl
 and
 .Ar sda
-device pins to send data to the display, where
+pins of the bus to which the device is connected, where
 .Ar pin
-is a pin number.
-
-Optionally, can be set:
-.Bl
+is an integer pin number;
+.Ed
 .It
-A level of
-.Ar brightness
-.Dl can be defined, an integer from 0 to 7 is acceptable (Default is 2);
+.Ar brightness Ns = Ns Ar level
+.Bd -ragged -offset indent -compact
+Specifies the brightness level as an integer from 0 to 7 (Default is 2);
+.Ed
 .It
-A number of
-.Ar digits
-.Dl can be set to 4 or 6 (Default is 4);
-A keyword
+.Ar digits Ns = Ns Ar number
+.Bd -ragged -offset indent -compact
+Sets the number of digits of the display as an integer 4 or 6 (Default is 4);
+.Ed
+.It
 .Ar clock
-.Dl can be used to set a clock type of the display (Default is a type with decimals).
-.El
-
+.Bd -ragged -offset indent -compact
+Used to set a clocklike type of the display (Default is a decimal type).
+.Ed
+.Pp
 The
 .Fl d
 option can be used multiple times.
+.El
 .It Fl h , Ic --help
-Brief help.
-.Sh DESCRIPTION
-Creates a number of character devices like
-.Qo /dev/tm1637/ Ns
-.Cm n Qc , wired to
-.Ar scl
-and
-.Ar sda
-pins.
+Print help text showing available options;
+.El
 .Sh EXAMPLES
 Display a string...
-.Bl -bullet -compact
+.Bl -compact
 
 .It
 with a colon (if You have a display with a colon):
-
 .Dl % echo -n Qo 20:15 Qc > /dev/tm1637/0
 .Dl % echo -n Qo ##:## Qc > /dev/tm1637/0
 
 .It
 without a colon:
-
 .Dl % echo -n Qo 20 15 Qc > /dev/tm1637/0
 .Dl % echo -n Qo 2015 Qc > /dev/tm1637/0
 .Dl % echo -n Qo #### Qc > /dev/tm1637/0
@@ -101,18 +120,16 @@ without a colon:
 .It
 with a dots (if You have a display with a decimal dots).
 Up to two dots can be used.
-
 .Dl % echo -n Qo 3.14 Qc > /dev/tm1637/0
 .Dl % echo -n Qo 01.01.21 Qc > /dev/tm1637/0
 
 .It
 right aligned number:
-
 .Dl % echo -n Qo 15 Qc > /dev/tm1637/0
 .El
 
 Manage the display with octal commands
-.Bl -bullet -compact
+.Bl -compact
 
 .It
 Turn the display off:
