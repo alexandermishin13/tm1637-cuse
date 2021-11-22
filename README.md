@@ -74,24 +74,23 @@ directory to the projects new one, build and install the daemon.
 % sudo make install
 ```
 
-You can wish to copy a file ***./rc.conf.d/tm1637d.example*** to a
-file ***/usr/local/etc/rc.conf.d/tm1637/tm1637d*** and to change it to
-suit Your needs. Then load a system module ```cuse.ko``` and  run the
-service:
+You can wish to copy a file ```./rc.conf.d/tm1637d``` to a directory
+```/usr/local/etc/rc.conf.d/tm1637/``` and change it to suit Your needs.
+Then load a system module ```cuse.ko``` and  run the service:
 
 ```shell
 % kldload cuse
 % service tm1637d start
 ```
 
-You can add the following line to the file ***/boot/loader.conf*** in
+You can add the following line to the file ```/boot/loader.conf``` in
 order for the module to load automatically at system startup:
 ```
 cuse_load="YES"
 ```
 
-One or more devices will be created into ***/dev/tm1637/*** directory.
-You can change permits to them by change a file ***/etc/devfs.rules***
+One or more devices will be created into ```/dev/tm1637/``` directory.
+You can change permits to them by change a file ```/etc/devfs.rules```
 and restart a ```devfs``` service. Read about how to do it:
 
 ```shell

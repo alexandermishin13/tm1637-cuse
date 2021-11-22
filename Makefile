@@ -22,8 +22,10 @@ LDADD_tm1637d=		-L/usr/local/lib -lutil -lgpio -lcuse -lpthread
 LDADD_tm1637ctl=	-L/usr/local/lib
 
 uninstall:
-	rm ${BINDIR}/tm1637d
-	rm ${MANDIR}8/${MAN}.gz
+	rm ${BINDIR_tm1637d}/tm1637d
+	rm ${BINDIR_tm1637ctl}/tm1637ctl
+	rm ${MANDIR}1/${MAN_tm1637ctl}.gz
+	rm ${MANDIR}8/${MAN_tm1637d}.gz
 	rm ${PREFIX}/etc/rc.d/tm1637d
 
 check:
