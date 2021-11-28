@@ -30,7 +30,7 @@
 .Nd Cuse based tm1637 display userland driver.
 .Sh SYNOPSIS
 .Nm
-.Oo Fl b Oc Oo Fl h Oc
+.Oo Fl bh Oc
 .Fl d Ar scl Ns = Ns Ar pin Ns , Ns Ar sda Ns = Ns Ar pin Ns
 .Oo , Ns Ar brightness Ns = Ns Ar level Oc Ns
 .Oo , Ns Ar digits Ns = Ns Ar number Oc Ns
@@ -61,14 +61,14 @@ To configure the service, see
 .Sh OPTIONS
 The
 .Nm
-supports the following options:
+supports following options:
 .Bl -tag -width indent
 .It Fl b
 Daemonize the
 .Nm
 after running;
 .It Fl d , Ic --device
-Defines th device and set its parameters:
+Defines the device and set its parameters:
 .Bl
 .It
 .Ar scl Ns = Ns Ar pin , Ar sda Ns = Ns Ar pin
