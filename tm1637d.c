@@ -813,6 +813,7 @@ main(int argc, char **argv)
     int ch, long_index = 0;
     bool clocklike = false;
     size_t scl, sda, brightness, digits;
+    unsigned long number;
     extern char *optarg, *suboptarg;
     char *options, *value, *end;
     struct tm1637_dev_t *tmd;
@@ -853,31 +854,39 @@ main(int argc, char **argv)
 		switch(getsubopt(&options, subopts, &value)) {
 		case SCL:
 		    if (!value)
-			tm1637_errx(EXIT_FAILURE, "no value for scl");
-		    scl = strtoul(value, &end, 0);
-		    if (scl >= NUMBER_OF_GPIO_PINS)
-			tm1637_errx(EXIT_FAILURE, "too big value for scl");
+			tm1637_errx(EXIT_FAILURE, "no value for '%s'", suboptarg);
+		    number = strtoul(value, &end, 0);
+		    if (number >= NUMBER_OF_GPIO_PINS)
+			tm1637_errx(EXIT_FAILURE, "too big value for '%s'", suboptarg);
+
+		    scl = number;
 		    break;
 		case SDA:
 		    if (!value)
-			tm1637_errx(EXIT_FAILURE, "no value for sda");
-		    sda = strtoul(value, &end, 0);
-		    if (sda >= NUMBER_OF_GPIO_PINS)
-			tm1637_errx(EXIT_FAILURE, "too big value for sda");
+			tm1637_errx(EXIT_FAILURE, "no value for '%s'", suboptarg);
+		    number = strtoul(value, &end, 0);
+		    if (number >= NUMBER_OF_GPIO_PINS)
+			tm1637_errx(EXIT_FAILURE, "too big value for '%s'", suboptarg);
+
+		    sda = number;
 		    break;
 		case BRIGHTNESS:
 		    if (value) {
-			brightness = strtoul(value, &end, 0);
-			if (brightness > BRIGHT_BRIGHTEST)
-			    tm1637_errx(EXIT_FAILURE, "too big value for brightness");
+			number = strtoul(value, &end, 0);
+			if (number > BRIGHT_BRIGHTEST)
+			    tm1637_errx(EXIT_FAILURE, "too big value for '%s'", suboptarg);
+
+			brightness = number;
 		    }
 		    break;
 		case DIGITS:
 		    if (value) {
-			digits = strtoul(value, &end, 0);
-			if ((digits != 4) &&
-			    (digits != 6))
+			number = strtoul(value, &end, 0);
+			if ((number != 4) &&
+			    (number != 6))
 				tm1637_errx(EXIT_FAILURE, "only tm1637 4 or 6 digits is known");
+
+			digits = number;
 		    }
 		    break;
 		case CLOCK:
@@ -885,7 +894,7 @@ main(int argc, char **argv)
 		    break;
 		case -1:
 		    if (suboptarg)
-			tm1637_errx(1, "illegal sub option %s", suboptarg);
+			tm1637_errx(1, "illegal sub option '%s'", suboptarg);
 		    else
 			tm1637_errx(1, "missing sub option");
 		    break;
