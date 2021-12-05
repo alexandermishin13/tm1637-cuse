@@ -62,7 +62,7 @@
 #define TM1637_CUSE_DEFAULT_DEVNAME	"tm1637"
 #define ACK_TIMEOUT			200
 
-struct pidfh *pfh;
+static struct pidfh *pfh;
 static char *pid_file = NULL;
 static char *gpio_device = "/dev/gpioc0";
 static gpio_handle_t gpio_handle;
