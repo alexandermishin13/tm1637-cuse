@@ -34,7 +34,10 @@ rcvar=tm1637d_enable
 load_rc_config $name
 
 : ${tm1637d_enable:="NO"}
+: ${tm1637d_scl:="0"}
+: ${tm1637d_sda:="1"}
 : ${tm1637d_digits:="4"}
+: ${tm1637d_type:=""}
 : ${tm1637d_flags:="-b"}
 
 tm1637d_bin="/usr/local/sbin/tm1637d"
