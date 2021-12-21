@@ -1,5 +1,12 @@
 tm1637d_enable="YES"
 tm1637d_profiles="disp1"
+
+# !!!
+# The scl=26 and sda=29 values are suitable for OrangePI.
+# But for RaspberryPI they lead to system hanging,
+# for RPI family I use scl=20, sda=21 instead.
+# !!!
+
 tm1637d_disp1_scl=26
 tm1637d_disp1_sda=29
 #tm1637d_disp1_digits=4
